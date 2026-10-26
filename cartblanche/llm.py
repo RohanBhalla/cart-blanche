@@ -64,7 +64,9 @@ class Usage:
 
 def _litellm_completion(**kwargs: Any) -> Any:
     import litellm  # imported lazily: it is slow to import and tests don't need it
+    from dotenv import load_dotenv
 
+    load_dotenv()  # API keys from .env; real environment variables take precedence
     return litellm.completion(**kwargs)
 
 
