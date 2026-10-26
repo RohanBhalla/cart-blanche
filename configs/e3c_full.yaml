@@ -1,0 +1,4 @@
+config_id: E3c
+description: E2 + full raw history in context
+intent_parser: true
+personalization: full
