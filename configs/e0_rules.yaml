@@ -1,0 +1,3 @@
+config_id: E0
+description: Non-LLM baseline - filter by hard constraints, sort by rating
+agent: rules

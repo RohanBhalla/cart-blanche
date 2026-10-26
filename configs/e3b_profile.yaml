@@ -1,0 +1,4 @@
+config_id: E3b
+description: E2 + summarized profile instead of RAG
+intent_parser: true
+personalization: profile

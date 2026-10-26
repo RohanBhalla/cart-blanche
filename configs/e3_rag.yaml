@@ -1,0 +1,4 @@
+config_id: E3
+description: E2 + history RAG
+intent_parser: true
+personalization: rag

@@ -1,0 +1,6 @@
+config_id: E5
+description: E4b + fact extractor
+intent_parser: true
+personalization: rag
+relationship: check
+extractor: true

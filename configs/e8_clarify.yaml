@@ -1,0 +1,9 @@
+config_id: E8
+description: E7 + one clarifying question
+intent_parser: true
+personalization: rag
+relationship: check
+extractor: true
+labeling: spotlight
+verifier: true
+clarify: true

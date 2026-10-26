@@ -1,0 +1,7 @@
+config_id: E6
+description: E5 + untrusted-text labeling
+intent_parser: true
+personalization: rag
+relationship: check
+extractor: true
+labeling: spotlight

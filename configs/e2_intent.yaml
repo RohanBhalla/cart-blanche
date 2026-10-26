@@ -1,0 +1,3 @@
+config_id: E2
+description: E1 + intent parser / structured requirements
+intent_parser: true
