@@ -26,14 +26,6 @@ def test_rules_agent_rejects_llm_components():
         RunConfig(config_id="bad", agent="rules", verifier=True)
 
 
-def test_agent_and_judge_are_different_families(monkeypatch):
-    monkeypatch.delenv("CARTBLANCHE_AGENT_MODEL", raising=False)
-    monkeypatch.delenv("CARTBLANCHE_JUDGE_MODEL", raising=False)
+def test_agent_and_judge_are_different_families():
     c = RunConfig(config_id="x")
     assert c.agent_model.split("/")[0] != c.judge_model.split("/")[0]
-
-
-def test_model_names_overridable_from_env(monkeypatch):
-    monkeypatch.setenv("CARTBLANCHE_JUDGE_MODEL", "openai/gpt-5.4-mini")
-    assert RunConfig(config_id="x").judge_model == "openai/gpt-5.4-mini"
-    assert RunConfig(config_id="x", judge_model="openai/other").judge_model == "openai/other"

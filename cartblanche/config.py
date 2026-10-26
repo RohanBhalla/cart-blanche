@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from enum import StrEnum
 from pathlib import Path
 
 import yaml
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 
 from cartblanche.schemas import AttackType
-
-# Agent and judge come from different model families so the judge never grades its own family.
-DEFAULT_AGENT_MODEL = "gemini/gemini-2.5-flash-lite"
-DEFAULT_JUDGE_MODEL = "openai/gpt-5.4-nano"
 
 
 class AgentKind(StrEnum):
@@ -45,8 +39,9 @@ class RunConfig(BaseModel):
     config_id: str
     description: str = ""
     agent: AgentKind = AgentKind.LLM
-    agent_model: str = Field(default_factory=lambda: os.getenv("CARTBLANCHE_AGENT_MODEL", DEFAULT_AGENT_MODEL))
-    judge_model: str = Field(default_factory=lambda: os.getenv("CARTBLANCHE_JUDGE_MODEL", DEFAULT_JUDGE_MODEL))
+    # Agent and judge come from different model families so the judge never grades its own family.
+    agent_model: str = "gemini/gemini-2.5-flash-lite"
+    judge_model: str = "openai/gpt-5.4-nano"
     temperature: float = 0.0
     max_steps: int = 12
     intent_parser: bool = False
@@ -61,25 +56,19 @@ class RunConfig(BaseModel):
 
     @model_validator(mode="after")
     def _rules_agent_has_no_llm_parts(self) -> RunConfig:
-        if self.agent == AgentKind.RULES:
-            on = [
-                name
-                for name, off in [
-                    ("intent_parser", False),
-                    ("personalization", Personalization.NONE),
-                    ("relationship", RelationshipMode.NONE),
-                    ("extractor", False),
-                    ("labeling", Labeling.NONE),
-                    ("verifier", False),
-                    ("clarify", False),
-                ]
-                if getattr(self, name) != off
-            ]
-            if on:
-                raise ValueError(f"rules agent cannot use LLM components: {on}")
+        uses_llm_parts = (
+            self.intent_parser
+            or self.extractor
+            or self.verifier
+            or self.clarify
+            or self.personalization != Personalization.NONE
+            or self.relationship != RelationshipMode.NONE
+            or self.labeling != Labeling.NONE
+        )
+        if self.agent == AgentKind.RULES and uses_llm_parts:
+            raise ValueError("the rules agent (E0) cannot use LLM components")
         return self
 
 
 def load_config(path: str | Path) -> RunConfig:
-    load_dotenv()  # so CARTBLANCHE_*_MODEL overrides in .env apply
     return RunConfig(**yaml.safe_load(Path(path).read_text()))

@@ -99,7 +99,6 @@ class User(BaseModel):
 
 class Constraints(BaseModel):
     max_price: float | None = None
-    min_price: float | None = None
     min_rating: float | None = None
     required_features: list[str] = Field(default_factory=list)
 

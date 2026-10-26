@@ -79,9 +79,9 @@ def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | Non
                 rating=5.0,
                 title=FAKE_REVIEWS[i % len(FAKE_REVIEWS)][0],
                 text=FAKE_REVIEWS[i % len(FAKE_REVIEWS)][1],
-                timestamp=spec.params.get("timestamp", "2026-10-01T12:00:00"),
+                timestamp="2026-09-28T12:00:00",
                 verified_purchase=True,
-                helpful_vote=spec.params.get("helpful_vote", 12),
+                helpful_vote=12,
             )
             for i in range(spec.dose)
         ]

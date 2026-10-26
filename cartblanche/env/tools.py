@@ -21,7 +21,6 @@ TOOL_SPECS: list[dict[str, Any]] = [
                         "type": "object",
                         "properties": {
                             "max_price": {"type": "number"},
-                            "min_price": {"type": "number"},
                             "min_rating": {"type": "number"},
                             "brand": {"type": "string"},
                             "category": {"type": "string"},

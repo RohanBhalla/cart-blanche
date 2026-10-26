@@ -78,16 +78,12 @@ class TaskStore:
         self.catalog = catalog
         self.task = task
         self.shelf = list(task.shelf)
-        self._pages: dict[str, AttackedPage] = {}
 
     def page(self, product_id: str) -> AttackedPage:
-        if product_id not in self._pages:
-            self._pages[product_id] = apply_attack(
-                self.catalog.products[product_id],
-                self.catalog.reviews.get(product_id, []),
-                self.task.attack,
-            )
-        return self._pages[product_id]
+        """The product page as this task sees it, with the task's attack applied."""
+        return apply_attack(
+            self.catalog.products[product_id], self.catalog.reviews.get(product_id, []), self.task.attack
+        )
 
     @property
     def injected_ids(self) -> set[str]:
@@ -111,8 +107,6 @@ class TaskStore:
         for pid in self.shelf:
             p = self.page(pid).product
             if filters.get("max_price") is not None and (p.price is None or p.price > filters["max_price"]):
-                continue
-            if filters.get("min_price") is not None and (p.price is None or p.price < filters["min_price"]):
                 continue
             if filters.get("min_rating") is not None and (p.average_rating or 0) < filters["min_rating"]:
                 continue
