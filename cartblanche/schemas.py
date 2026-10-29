@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field, model_validator
 class Action(StrEnum):
     BUY = "BUY"
     SKIP = "SKIP"
-    WAIT = "WAIT"
     ALTERNATIVE = "ALTERNATIVE"
 
 
@@ -99,6 +98,7 @@ class User(BaseModel):
 
 class Constraints(BaseModel):
     max_price: float | None = None
+    size: str | None = None  # e.g. "M", "32", "10"; must be in the product's details["sizes"]
     min_rating: float | None = None
     required_features: list[str] = Field(default_factory=list)
 
@@ -119,7 +119,7 @@ class Task(BaseModel):
     shelf: list[str]  # products search_products can see
     candidates: list[str]  # scored subset of the shelf (gold + hard distractors)
     gold_action: Action
-    gold_pick: str | None = None  # None when the gold action is SKIP or WAIT
+    gold_pick: str | None = None  # None when the gold action is SKIP
     acceptable: list[str] = Field(default_factory=list)
     constraints: Constraints = Field(default_factory=Constraints)
     relationship: Relationship | None = None

@@ -1,8 +1,8 @@
 # CartBlanche
 
-A personalized shopping agent that decides **BUY / SKIP / WAIT / ALTERNATIVE** for a user's request, using their purchase history, and stays robust to seller-side manipulation (fake reviews, hidden instructions, fake "user approved" text).
+A personalized shopping agent that decides **BUY / ALTERNATIVE / SKIP** for a user's request, using their purchase history, and stays robust to seller-side manipulation (fake reviews, hidden instructions, fake "user approved" text).
 
-Built on [Amazon Reviews 2023](https://amazon-reviews-2023.github.io/) (McAuley Lab; Cell Phones & Accessories, Home & Kitchen). The evaluation harness comes first, and every component is switchable so its effect can be measured (configs E0–E8).
+Built on [Amazon Reviews 2023](https://amazon-reviews-2023.github.io/) (McAuley Lab; Clothing, Shoes & Jewelry). The evaluation harness comes first, and every component is switchable so its effect can be measured (configs E0–E8).
 
 ## Setup
 
