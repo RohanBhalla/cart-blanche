@@ -12,6 +12,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env   # add your GEMINI_API_KEY
 pytest
+python -m cartblanche.eval.run configs/e0_rules.yaml   # results in runs/E0/
 ```
 
 ## Layout
@@ -22,9 +23,9 @@ pytest
 | `cartblanche/config.py` | shared | Run config: one YAML per run, component switches |
 | `cartblanche/llm.py` | shared | LiteLLM wrapper: disk cache, token / cost / latency logging |
 | `cartblanche/env/` | A · Environment & attacks | Store tools, fake store + 10 tasks, attack injector |
-| `cartblanche/agent/` | B · Agent & personalization | Intent parser, retrieval, history RAG, recommendation agent |
+| `cartblanche/agent/` | B · Agent & personalization | E0 rules baseline; next: intent parser, retrieval, history RAG, recommendation agent |
 | `cartblanche/defenses/` | C · Defenses | Fact extractor, untrusted-text labeling, verifier |
-| `cartblanche/eval/` | C · Evaluation | Harness, metrics, judge, results tables |
+| `cartblanche/eval/` | C · Evaluation | Harness (`run`), code-checked metrics and scorecard; next: judge |
 | `configs/` | shared | E0–E8 experiment configs |
 
 ## How the store works
