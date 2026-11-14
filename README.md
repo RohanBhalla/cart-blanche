@@ -22,7 +22,7 @@ python -m cartblanche.eval.run configs/e0_rules.yaml   # results in runs/E0/
 | `cartblanche/schemas.py` | shared | Contracts: Product, Review, User, Task, AgentResult |
 | `cartblanche/config.py` | shared | Run config: one YAML per run, component switches |
 | `cartblanche/llm.py` | shared | LiteLLM wrapper: disk cache, token / cost / latency logging |
-| `cartblanche/env/` | A · Environment & attacks | Store tools, fake store + 10 tasks, attack injector |
+| `cartblanche/env/` | A · Environment & attacks | Store tools, fake store + 11 tasks, attack injector |
 | `cartblanche/agent/` | B · Agent & personalization | E0 rules baseline; next: intent parser, retrieval, history RAG, recommendation agent |
 | `cartblanche/defenses/` | C · Defenses | Fact extractor, untrusted-text labeling, verifier |
 | `cartblanche/eval/` | C · Evaluation | Harness (`run`), code-checked metrics and scorecard; next: judge |
@@ -37,3 +37,7 @@ The agent never touches a real website. It calls five tools (`search_products`, 
 - an attacked task's injected reviews/text appear on the target product's page. Injected review IDs look exactly like genuine ones; only the evaluator sees `TaskStore.injected_ids`.
 
 Development plan: https://claude.ai/artifact/HvaZZ4H3KXXnRKuuWHnvTP
+
+## Working on the repo
+
+Read [`AGENTS.md`](AGENTS.md) for conventions and [`docs/CONTEXT.md`](docs/CONTEXT.md) for the decisions so far, where the build stands, and the open questions. Both apply to people and AI coding agents alike (`CLAUDE.md` points Claude Code at `AGENTS.md`).
