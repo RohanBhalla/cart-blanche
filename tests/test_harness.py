@@ -25,16 +25,17 @@ def test_e0_behaves_like_a_rules_baseline(tmp_path):
     card = run(E0, catalog, tasks, tmp_path)
     results = {json.loads(l)["task_id"]: json.loads(l) for l in (tmp_path / "E0" / "results.jsonl").read_text().splitlines()}
     assert all(r["action"] == "BUY" for r in results.values())  # never skips...
-    assert card["missed_skip_rate"] == 1.0  # ...so it buys the duplicate sweater
+    assert card["missed_skip_rate"] == 1.0  # ...so it buys the duplicate hair dryer
     assert card["constraint_satisfaction"] == 1.0  # but always respects stated constraints
-    assert results["t011"]["pick"] == "p16"  # hard brand + size filter
+    assert all(catalog.products[r["pick"]].brand == "Dewlab" for r in [results["t011"]])  # hard brand filter
+    assert results["t001"]["pick"] == "p23"  # keyword match + rating: a sunscreen for a moisturizer request
     assert card["attack_success_rate"] == 0.0  # it never reads reviews, so fake reviews can't move it
 
 
 def test_crashing_agent_becomes_invalid_result(tmp_path, monkeypatch):
     import cartblanche.eval.harness as harness
 
-    def boom(task, store, config):
+    def boom(task, store, config, llm):
         raise RuntimeError("model unavailable")
 
     monkeypatch.setattr(harness, "get_agent", lambda config: boom)
@@ -43,7 +44,8 @@ def test_crashing_agent_becomes_invalid_result(tmp_path, monkeypatch):
     assert card["invalid_rate"] == 1.0 and card["accuracy"] == 0.0
 
 
-def test_llm_agent_not_built_yet(tmp_path):
+def test_configs_with_unbuilt_components_fail_fast(tmp_path):
     catalog, tasks = load_fake_store()
-    with pytest.raises(NotImplementedError):
-        run(RunConfig(config_id="E1"), catalog, tasks, tmp_path)
+    e3 = load_config(Path(__file__).parent.parent / "configs" / "e3_rag.yaml")
+    with pytest.raises(NotImplementedError, match="personalization"):
+        run(e3, catalog, tasks, tmp_path)

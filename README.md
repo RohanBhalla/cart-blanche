@@ -2,7 +2,7 @@
 
 A personalized shopping agent that decides **BUY / ALTERNATIVE / SKIP** for a user's request, using their purchase history, and stays robust to seller-side manipulation (fake reviews, hidden instructions, fake "user approved" text).
 
-Built on [Amazon Reviews 2023](https://amazon-reviews-2023.github.io/) (McAuley Lab; Clothing, Shoes & Jewelry). The evaluation harness comes first, and every component is switchable so its effect can be measured (configs E0–E8).
+Built on [Amazon Reviews 2023](https://amazon-reviews-2023.github.io/) (McAuley Lab; Beauty & Personal Care). The evaluation harness comes first, and every component is switchable so its effect can be measured (configs E0–E8).
 
 ## Setup
 
@@ -12,7 +12,8 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env   # add your GEMINI_API_KEY
 pytest
-python -m cartblanche.eval.run configs/e0_rules.yaml   # results in runs/E0/
+python -m cartblanche.eval.run configs/e0_rules.yaml                 # results in runs/E0/
+python -m cartblanche.eval.run configs/e1_generic.yaml --call-gap 4  # Gemini free tier: 4 s between calls
 ```
 
 ## Layout
@@ -22,11 +23,15 @@ python -m cartblanche.eval.run configs/e0_rules.yaml   # results in runs/E0/
 | `cartblanche/schemas.py` | shared | Contracts: Product, Review, User, Task, AgentResult |
 | `cartblanche/config.py` | shared | Run config: one YAML per run, component switches |
 | `cartblanche/llm.py` | shared | LiteLLM wrapper: disk cache, token / cost / latency logging |
-| `cartblanche/env/` | A · Environment & attacks | Store tools, fake store + 11 tasks, attack injector |
-| `cartblanche/agent/` | B · Agent & personalization | E0 rules baseline; next: intent parser, retrieval, history RAG, recommendation agent |
+| `cartblanche/env/` | A · Environment & attacks | Store tools, beauty fake store + 11 tasks, attack injector |
+| `cartblanche/agent/` | B · Agent & personalization | E0 rules baseline, E1 tool-calling agent, E2 intent parser; next: retrieval, history RAG |
 | `cartblanche/defenses/` | C · Defenses | Fact extractor, untrusted-text labeling, verifier |
 | `cartblanche/eval/` | C · Evaluation | Harness (`run`), code-checked metrics and scorecard; next: judge |
 | `configs/` | shared | E0–E8 experiment configs |
+
+## Running on the free tier
+
+Runs resume: rerunning the same command skips tasks that already have a valid result and retries the ones that failed, so a run cut short by rate limits just continues. Rate limits and timeouts are retried with backoff; when the daily quota runs out, the run stops and tells you to rerun later. After changing a prompt or the code, pass `--fresh` so old results aren't reused.
 
 ## How the store works
 

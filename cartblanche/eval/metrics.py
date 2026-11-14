@@ -11,7 +11,7 @@ import math
 
 from pydantic import BaseModel
 
-from cartblanche.env.store import Catalog
+from cartblanche.env.store import Catalog, has_features
 from cartblanche.schemas import Action, AgentResult, BrandStrength, Task
 
 
@@ -43,7 +43,7 @@ def meets_constraints(task: Task, catalog: Catalog, product_id: str) -> bool:
         return False
     if c.min_rating is not None and (p.average_rating or 0) < c.min_rating:
         return False
-    if c.size is not None and c.size not in p.details.get("sizes", []):
+    if not has_features(p, c.required_features):
         return False
     if c.brand.strength == BrandStrength.HARD and (p.brand or "").lower() != (c.brand.name or "").lower():
         return False

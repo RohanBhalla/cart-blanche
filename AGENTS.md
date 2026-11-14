@@ -6,7 +6,7 @@ Instructions for anyone working in this repo, whether a person or an AI coding a
 
 ## The project in one paragraph
 
-CartBlanche is a shopping agent. It answers a user's request with **BUY / ALTERNATIVE / SKIP**, using the user's purchase history, and stays robust to seller manipulation: fake reviews, hidden instructions, and fake "the user approved this" text. It runs on Amazon Reviews 2023 (Clothing, Shoes & Jewelry), where reviewers' review histories stand in for purchases. It is a course study: every component can be switched on or off in a config (E0–E8), so its effect can be measured. The full plan is the [development plan](https://claude.ai/artifact/HvaZZ4H3KXXnRKuuWHnvTP).
+CartBlanche is a shopping agent. It answers a user's request with **BUY / ALTERNATIVE / SKIP**, using the user's purchase history, and stays robust to seller manipulation: fake reviews, hidden instructions, and fake "the user approved this" text. It runs on Amazon Reviews 2023 (Beauty & Personal Care), where reviewers' review histories stand in for purchases. It is a course study: every component can be switched on or off in a config (E0–E8), so its effect can be measured. The full plan is the [development plan](https://claude.ai/artifact/HvaZZ4H3KXXnRKuuWHnvTP).
 
 ## Setup and commands
 
@@ -16,6 +16,7 @@ pip install -e ".[dev]"
 cp .env.example .env        # add GEMINI_API_KEY (agent) and OPENAI_API_KEY (judge)
 pytest                      # must pass before every commit
 python -m cartblanche.eval.run configs/e0_rules.yaml   # writes runs/E0/
+python -m cartblanche.eval.run configs/e1_generic.yaml --call-gap 4   # real Gemini calls; resumable, --fresh to redo
 ```
 
 Use Python 3.12 with pip and a venv, not uv or poetry.
@@ -28,7 +29,7 @@ Use Python 3.12 with pip and a venv, not uv or poetry.
 | `cartblanche/config.py` | shared | `RunConfig`, one YAML per run in `configs/` |
 | `cartblanche/llm.py` | shared | The only path to a model: LiteLLM, a disk cache, and token, cost and latency logging |
 | `cartblanche/env/` | A · Rohan | Store and `TaskStore`, the five agent tools, the attack injector, the fake store (`env/data/`) |
-| `cartblanche/agent/` | B · Megha | E0 rules baseline; then the intent parser, retrieval, history RAG and the recommendation agent |
+| `cartblanche/agent/` | B · Megha | E0 rules baseline, E1 agent loop (`llm_agent.py`), E2 intent parser (`intent.py`); then retrieval and history RAG |
 | `cartblanche/defenses/` | C · Riddhi | Fact extractor, untrusted-text labeling, copied-phrasing check, verifier |
 | `cartblanche/eval/` | C · Riddhi | Harness, code-checked metrics, scorecard; then the judge |
 | `tests/` | everyone | One test file per module |
@@ -39,7 +40,8 @@ Use Python 3.12 with pip and a venv, not uv or poetry.
 - **Every model call goes through `llm.LLM`.** That keeps cost and latency logged and makes reruns free from the cache. Use temperature 0.
 - **The agent and the judge come from different model families.** The agent is Gemini and the judge is OpenAI.
 - **Prompts are tuned on the `dev` split only.** Reported numbers come from `test`.
-- **Every component is a config switch.** A new component gets a field in `RunConfig`, is off by default, and is turned on in the config that tests it.
+- **Every component is a config switch.** A new component gets a field in `RunConfig`, is off by default, and is turned on in the config that tests it. Until it's built, `harness.not_built_yet` makes configs that use it fail fast.
+- **After changing a prompt or agent code, rerun with `--fresh`.** Runs resume from saved results, which would otherwise be reused.
 - **Attacks are saved and reused.** Every config must face the same injected text (3 seeds per task and dose). Dose 0 must equal the clean page exactly.
 - **Histories are real reviews only.** Never invent items for a user's history. Choose real users whose history fits the test case.
 

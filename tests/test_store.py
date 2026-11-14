@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from cartblanche.env.store import TaskStore, load_fake_store
+from cartblanche.env.store import TaskStore, has_features, load_fake_store
 from cartblanche.env.tools import TOOL_SPECS, dispatch
 from cartblanche.schemas import Action, AttackSpec, TaskType
 
@@ -57,8 +57,18 @@ def test_gold_satisfies_constraints(fake):
     for t in tasks:
         if t.gold_pick and t.constraints.max_price is not None:
             assert catalog.products[t.gold_pick].price <= t.constraints.max_price
-        if t.gold_pick and t.constraints.size is not None:
-            assert t.constraints.size in catalog.products[t.gold_pick].details["sizes"]
+        if t.gold_pick:
+            assert has_features(catalog.products[t.gold_pick], t.constraints.required_features)
+
+
+def test_has_features_matches_whole_phrases(fake):
+    products = fake[0].products
+    assert has_features(products["p01"], ["fragrance-free"])
+    assert has_features(products["p01"], ["Fragrance free", "sensitive skin"])
+    assert not has_features(products["p03"], ["fragrance-free"])  # citrus-scented
+    assert not has_features(products["p19"], ["sulfate-free"])  # "sulfate formula" is not "sulfate-free"
+    assert has_features(products["p06"], ["sulfate-free"])
+    assert has_features(products["p02"], [])
 
 
 # ---- tools --------------------------------------------------------------
@@ -66,52 +76,52 @@ def test_gold_satisfies_constraints(fake):
 
 def test_search_finds_gold_and_respects_filters(fake, tasks):
     s = store_for(fake, tasks, "t001")
-    hits = s.search_products("waterproof rain jacket", {"max_price": 90})
+    hits = s.search_products("fragrance-free moisturizer for sensitive skin", {"max_price": 25})
     ids = [h["id"] for h in hits]
     assert "p01" in ids and "p04" in ids
-    assert "p02" not in ids  # $189
-    assert all(h["price"] <= 90 for h in hits)
+    assert "p02" not in ids  # $68
+    assert all(h["price"] <= 25 for h in hits)
 
 
 def test_search_limited_to_shelf(fake, tasks):
     s = store_for(fake, tasks, "t001", shelf=["p01", "p02", "p03", "p04", "p05", "p33"])
-    assert s.search_products("merino sweater") == []
+    assert s.search_products("hair dryer") == []
     assert s.get_product("p22") == {"error": "product p22 not found"}
 
 
 def test_get_product_and_reviews(fake, tasks):
     s = store_for(fake, tasks, "t001")
-    assert s.get_product("p01")["price"] == 79.99
+    assert s.get_product("p01")["price"] == 18.99
     reviews = s.get_reviews("p01")
     assert [r["id"] for r in reviews] == ["p01.review.1", "p01.review.2", "p01.review.3"]
 
 
 def test_history_hides_future_purchases(fake, tasks):
-    s = store_for(fake, tasks, "t003")
+    s = store_for(fake, tasks, "t002")
     titles = [h["title"] for h in s.get_history("u02")]
-    assert "Cozyknit Merino Crew Neck Sweater, Charcoal" in titles
-    assert "Urban Wool Scarf, Grey" not in titles  # after as_of
+    assert "Silkstrand Curl Defining Shampoo, Sulfate-Free" in titles
+    assert "Silkstrand Curl Cream" not in titles  # after as_of
 
 
 def test_history_only_for_task_user(fake, tasks):
     s = store_for(fake, tasks, "t003")
     assert "error" in s.get_history("u01")
-    assert "error" in s.check_owned("u01", "jacket")
+    assert "error" in s.check_owned("u01", "cleanser")
 
 
 def test_check_owned(fake, tasks):
     s = store_for(fake, tasks, "t003")
-    assert [o["product_id"] for o in s.check_owned("u02", "sweater")] == ["p22"]
-    assert [o["product_id"] for o in s.check_owned("u02", "sweaters")] == ["p22"]
-    assert s.check_owned("u02", "running shoes") == []
+    assert [o["product_id"] for o in s.check_owned("u03", "hair dryer")] == ["p10"]
+    assert [o["product_id"] for o in s.check_owned("u03", "hair dryers")] == ["p10"]
+    assert s.check_owned("u03", "sunscreen") == []
     s1 = store_for(fake, tasks, "t001")
-    assert [o["product_id"] for o in s1.check_owned("u01", "windbreaker")] == ["p03"]
-    assert [o["product_id"] for o in s1.check_owned("u01", "running shoe")] == ["x101"]
+    assert [o["product_id"] for o in s1.check_owned("u01", "cleanser")] == ["x101"]
+    assert [o["product_id"] for o in s1.check_owned("u01", "foundation")] == ["p13"]
 
 
 def test_search_folds_plurals(fake, tasks):
-    s = store_for(fake, tasks, "t002")
-    assert {"p07", "p08"} <= {h["id"] for h in s.search_products("oxford shoe")}
+    s = store_for(fake, tasks, "t003")
+    assert {"p10", "p11"} <= {h["id"] for h in s.search_products("hair dryers")}
 
 
 def test_dispatch_round_trip_and_errors(fake, tasks):

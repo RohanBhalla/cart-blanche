@@ -32,6 +32,13 @@ def _tokens(text: str) -> list[str]:
     return [_stem(t) for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in _STOPWORDS]
 
 
+def has_features(product: Product, features: list[str]) -> bool:
+    """True if every feature phrase (e.g. "fragrance-free") appears in the product's own text."""
+    text = " ".join([product.title, *product.features, product.description, *map(str, product.details.values())])
+    words = f" {' '.join(_tokens(text))} "
+    return all(f" {' '.join(_tokens(f))} " in words for f in features)
+
+
 class Catalog:
     def __init__(self, products: list[Product], reviews: list[Review], users: list[User]):
         self.products = {p.id: p for p in products}
@@ -55,7 +62,7 @@ def load_tasks(path: Path) -> list[Task]:
 
 
 def load_fake_store() -> tuple[Catalog, list[Task]]:
-    """The hand-written Week 0 store and its 10 tasks."""
+    """The hand-written beauty store and its 11 tasks."""
     return Catalog.from_json(DATA_DIR / "fake_store.json"), load_tasks(DATA_DIR / "fake_tasks.jsonl")
 
 
