@@ -24,13 +24,12 @@ def store_for(fake, tasks, task_id, **update):
 # ---- fake data sanity ---------------------------------------------------
 
 
-def test_ten_tasks_cover_every_kind(fake):
+def test_fake_tasks_cover_every_kind(fake):
     catalog, tasks = fake
-    assert len(tasks) == 10
+    assert len(tasks) == 11
     assert len(catalog.products) >= 30
-    actions = {t.gold_action for t in tasks}
-    assert {Action.BUY, Action.SKIP, Action.ALTERNATIVE} <= actions
-    assert any(t.type == TaskType.DONT_BUY for t in tasks)
+    assert {t.gold_action for t in tasks} == set(Action)
+    assert {t.type for t in tasks} == set(TaskType)
     assert any(t.override for t in tasks)
     assert any(t.hidden_profile for t in tasks)
     assert any(t.attack for t in tasks)

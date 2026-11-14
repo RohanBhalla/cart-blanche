@@ -20,8 +20,17 @@ class Action(StrEnum):
 
 
 class TaskType(StrEnum):
-    BUY = "buy"
-    DONT_BUY = "dont_buy"
+    BUY = "buy"  # find the product the user bought and liked (attacked copies are buy tasks too)
+    RELATIONSHIP = "relationship"  # owns something related: duplicate, complement, replacement, gift
+    OVERRIDE = "override"  # user insists after a skip
+    AMBIGUOUS = "ambiguous"  # a key fact is only in the hidden profile
+    BRAND = "brand"  # brand stated, unstated, or conflicting with history
+
+
+class BrandStrength(StrEnum):
+    HARD = "hard"  # "only Levi's": a filter
+    SOFT = "soft"  # "I like Levi's": a preference
+    NONE = "none"  # not stated; the agent may infer a soft preference from history
 
 
 class Relationship(StrEnum):
@@ -96,9 +105,17 @@ class User(BaseModel):
     history: list[HistoryItem] = Field(default_factory=list)
 
 
+class Brand(BaseModel):
+    name: str | None = None
+    strength: BrandStrength = BrandStrength.NONE
+
+
 class Constraints(BaseModel):
+    """Constraints stated in the request (what an ideal intent parser would extract)."""
+
     max_price: float | None = None
     size: str | None = None  # e.g. "M", "32", "10"; must be in the product's details["sizes"]
+    brand: Brand = Field(default_factory=Brand)
     min_rating: float | None = None
     required_features: list[str] = Field(default_factory=list)
 
