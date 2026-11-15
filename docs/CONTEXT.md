@@ -13,8 +13,8 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Week 0: contracts (`schemas.py`), config, `llm.py`, fake store + tasks, store tools, attack injector | done | #1, #2 |
 | Eval harness, code-checked metrics and scorecard, E0 rules baseline | done | #3 |
 | Beauty fake store; E1 generic LLM agent (tool-calling loop); E2 intent parser (with brand field); free-tier retries and resumable runs | done | #5 |
-| Real data: stream Beauty into SQLite, real `Catalog` | **next** | |
-| Task generator (buy, relationship, override, ambiguous, brand, edge cases) | to do | |
+| Real data: Beauty streamed into SQLite (`build_db.py`), `SqliteCatalog`, reviews hidden after `as_of` | done | #6 |
+| Task generator (buy, relationship, override, ambiguous, brand, edge cases) | **next** | |
 | Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
 | E3 / E3b / E3c personalization and history reason tagging | to do | |
@@ -75,10 +75,30 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 - Other categories checked on Nov 14 (5-core users with 8+ reviews): Clothing 1.07M, Pet Supplies 240K, Grocery 170K, Toys 167K, Video Games 35K. Amazon_Fashion has no 5-core file and only 3.9K users with 8+ reviews in its raw file.
 - Review fields: rating, title, text, images, asin, parent_asin, user_id, timestamp, helpful_vote, verified_purchase.
 
+## The real store (built Nov 14)
+
+`data/cartblanche.sqlite`, 1.5 GB, built in 21 minutes (`python -m cartblanche.env.build_db`, seed 0). Spot check: all 20 sampled products match the source metadata. That's larger than the 0.3–1 GB estimate, because it keeps 10 reviews for every 5-core product, not just future shelf products.
+
+| | Count |
+|---|---|
+| Users (random sample of the 277K with 8+ 5-core reviews) | 10,000 |
+| History reviews | 156K; per user: median 12, p90 24, max 584; 79% rated 4–5 |
+| Products (5-core + history items) | 221K; 126K (57%) have a price; 98% have a brand |
+| Reviews shown on product pages (top 10 by helpful votes) | 2.03M, on 208K products |
+| Review dates | 2001 – Sep 2023 |
+| Same user reviewing the same product twice (repurchase signal) | 1,690 pairs |
+| History reviews that mention sensitive/oily skin, curly hair, shade or "broke me out" | 5.5K |
+
+Top categories: Hair Care 59K, Skin Care 48K, Foot/Hand/Nail 30K, Makeup 25K, Tools 24K, Shave 11K, Personal Care 9K, Fragrance 8.5K. Every history item has metadata.
+
+Notes for the task generator:
+- Only 57% of products have a price, so shelves for budget tasks must come from priced products.
+- Fake reviews are dated 2026-09-28 (fake-store time); for real tasks they must be dated just before the task's `as_of`, or they'll look like they come from the future.
+- Real review dates end in Sep 2023, so `as_of` comes from each user's history, not a fixed date.
+
 ## Open questions
 
 - Is Nov 15 the real experiment freeze? The build is behind the plan's schedule.
-- Approval to start the data streaming step.
 - The design doc and the development plan still say Clothing; they need updating for Beauty, including the Nov 4 answer about size vs quality vs brand.
 - Gemini free-tier limits will slow the full matrix (about 60K calls). Enable billing for Week 5, or spread runs over days.
 - At 3.5 Flash-Lite prices the full matrix costs roughly $40–60 for the agent instead of about $13; the plan's $20–40 budget needs a second look.
