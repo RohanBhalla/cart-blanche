@@ -15,6 +15,7 @@ python3.12 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env        # add GEMINI_API_KEY (agent) and OPENAI_API_KEY (judge)
 pytest                      # must pass before every commit
+python -m cartblanche.env.build_db                    # real store: streams ~14 GB into data/cartblanche.sqlite (~15 min)
 python -m cartblanche.eval.run configs/e0_rules.yaml   # writes runs/E0/
 python -m cartblanche.eval.run configs/e1_generic.yaml --call-gap 4   # real Gemini calls; resumable, --fresh to redo
 ```
@@ -28,7 +29,7 @@ Use Python 3.12 with pip and a venv, not uv or poetry.
 | `cartblanche/schemas.py` | shared | The contracts: Product, Review, User, Task, AgentResult. Everything else depends on these |
 | `cartblanche/config.py` | shared | `RunConfig`, one YAML per run in `configs/` |
 | `cartblanche/llm.py` | shared | The only path to a model: LiteLLM, a disk cache, and token, cost and latency logging |
-| `cartblanche/env/` | A · Rohan | Store and `TaskStore`, the five agent tools, the attack injector, the fake store (`env/data/`) |
+| `cartblanche/env/` | A · Rohan | Store and `TaskStore`, the five agent tools, the attack injector, the fake store (`env/data/`), the real SQLite store (`db.py`, built by `build_db.py`) |
 | `cartblanche/agent/` | B · Megha | E0 rules baseline, E1 agent loop (`llm_agent.py`), E2 intent parser (`intent.py`); then retrieval and history RAG |
 | `cartblanche/defenses/` | C · Riddhi | Fact extractor, untrusted-text labeling, copied-phrasing check, verifier |
 | `cartblanche/eval/` | C · Riddhi | Harness, code-checked metrics, scorecard; then the judge |
@@ -50,12 +51,12 @@ Use Python 3.12 with pip and a venv, not uv or poetry.
 - **Keep it simple.** Write plain functions and pydantic models, and avoid frameworks, plugin systems and speculative options. If a feature isn't in the plan, don't add it. Delete code that isn't used.
 - **Don't break the contracts.** If you change `schemas.py`, update `env/data/fake_store.json`, `fake_tasks.jsonl` and the tests in the same PR, and say so in the PR description, because every role depends on it.
 - **Each change comes with a test.** Metric tests use hand-computed expected numbers. Tests never call a real API: use the fake completion in `tests/test_llm.py` or LiteLLM's `mock_response`.
-- **Don't commit generated files.** `.env`, `data/raw/`, `data/*.sqlite`, `cache/` and `runs/` are git-ignored. Keep it that way.
+- **Don't commit generated files.** `.env`, `data/`, `cache/` and `runs/` are git-ignored. Keep it that way.
 
 ## Git workflow
 
 - Never push to `main` directly. Create a fresh branch from an up-to-date `main` for each step (`git checkout main && git pull && git checkout -b <step-name>`), then open a PR. The repo owner reviews and merges.
 - Before pushing to an existing branch, check that its PR is still open (`gh pr view --json state`). After a merge, start a new branch rather than reusing the old one, and delete merged branches.
-- PR descriptions say what changed, how it was tested, and any change to the contracts or to `docs/CONTEXT.md`.
+- PR descriptions are short and plainly worded, with only two sections: **What** (what changed) and **Why** (why it changed). Test details and results go in `docs/CONTEXT.md`.
 - **No AI attribution:** no `Co-Authored-By` lines for AI tools and no "Generated with" footers, in commits or PRs.
 - Never commit API keys. Keys live only in `.env`.

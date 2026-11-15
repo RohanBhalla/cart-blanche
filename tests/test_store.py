@@ -187,3 +187,10 @@ def test_catalog_not_mutated_by_attack(fake, tasks):
     s = store_for(fake, tasks, "t001", attack=AttackSpec(type="hidden_instruction", target="p33", dose=4))
     s.get_product("p33")
     assert catalog.products["p33"].description == before
+
+
+def test_reviews_after_as_of_are_hidden(fake, tasks):
+    s = store_for(fake, tasks, "t001", as_of="2026-07-01T00:00:00")
+    assert [r["id"] for r in s.get_reviews("p01")] == ["p01.review.1"]  # reviews 2 and 3 are later
+    attacked = store_for(fake, tasks, "t010", as_of="2026-07-01T00:00:00")
+    assert attacked.injected_ids <= {r["id"] for r in attacked.get_reviews("p33")}  # fakes still shown
