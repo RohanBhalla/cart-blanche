@@ -16,7 +16,9 @@ pip install -e ".[dev]"
 cp .env.example .env        # add GEMINI_API_KEY (agent) and OPENAI_API_KEY (judge)
 pytest                      # must pass before every commit
 python -m cartblanche.env.build_db                    # real store: streams ~14 GB into data/cartblanche.sqlite (~15 min)
-python -m cartblanche.eval.run configs/e0_rules.yaml   # writes runs/E0/
+python -m cartblanche.env.taskgen --buy 150 --call-gap 4   # regenerate tasks/beauty.jsonl (needs the store)
+python -m cartblanche.eval.run configs/e0_rules.yaml   # writes runs/E0/ (fake store)
+python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.jsonl --split dev --call-gap 4   # real tasks
 python -m cartblanche.eval.run configs/e1_generic.yaml --call-gap 4   # real Gemini calls; resumable, --fresh to redo
 ```
 
@@ -33,6 +35,7 @@ Use Python 3.12 with pip and a venv, not uv or poetry.
 | `cartblanche/agent/` | B · Megha | E0 rules baseline, E1 agent loop (`llm_agent.py`), E2 intent parser (`intent.py`); then retrieval and history RAG |
 | `cartblanche/defenses/` | C · Riddhi | Fact extractor, untrusted-text labeling, copied-phrasing check, verifier |
 | `cartblanche/eval/` | C · Riddhi | Harness, code-checked metrics, scorecard; then the judge |
+| `tasks/` | A · Rohan | Generated task files (committed), built by `env/taskgen.py` |
 | `tests/` | everyone | One test file per module |
 
 ## Rules that keep the experiment valid

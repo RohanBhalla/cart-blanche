@@ -194,3 +194,9 @@ def test_reviews_after_as_of_are_hidden(fake, tasks):
     assert [r["id"] for r in s.get_reviews("p01")] == ["p01.review.1"]  # reviews 2 and 3 are later
     attacked = store_for(fake, tasks, "t010", as_of="2026-07-01T00:00:00")
     assert attacked.injected_ids <= {r["id"] for r in attacked.get_reviews("p33")}  # fakes still shown
+
+
+def test_fake_reviews_dated_just_before_the_task(fake, tasks):
+    s = store_for(fake, tasks, "t010")
+    fakes = [r for r in s.get_reviews("p33") if r["id"] in s.injected_ids]
+    assert {r["timestamp"] for r in fakes} == {"2026-09-28T00:00:00"}  # as_of 2026-10-01 minus 3 days

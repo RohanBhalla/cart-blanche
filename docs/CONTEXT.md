@@ -14,7 +14,8 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Eval harness, code-checked metrics and scorecard, E0 rules baseline | done | #3 |
 | Beauty fake store; E1 generic LLM agent (tool-calling loop); E2 intent parser (with brand field); free-tier retries and resumable runs | done | #5 |
 | Real data: Beauty streamed into SQLite (`build_db.py`), `SqliteCatalog`, reviews hidden after `as_of` | done | #6 |
-| Task generator (buy, relationship, override, ambiguous, brand, edge cases) | **next** | |
+| Task generator: 150 real buy tasks (`taskgen.py`, `tasks/beauty.jsonl`); `run.py --tasks/--split`; fake reviews dated before `as_of` | done | #7 |
+| Task generator: relationship, override, ambiguous, brand, edge-case tasks | **next** | |
 | Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
 | E3 / E3b / E3c personalization and history reason tagging | to do | |
@@ -61,6 +62,9 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 14 | Bad agent output is scored invalid, never retried | Keeps the invalid-output rate honest |
 | Nov 14 | Agent model is now `gemini/gemini-3.5-flash-lite` (was 2.5 Flash-Lite) | Google closed 2.5 Flash-Lite to new API keys (404). 3.5 Flash-Lite costs $0.30 / $2.50 per M tokens (vs $0.10 / $0.40) and rejects `temperature`, so LiteLLM drops it; the cache keeps reruns stable |
 | Nov 14 | LiteLLM pinned to >= 1.109.1 | 1.106.4 crashed on any tool call (`No module named 'mcp'`) |
+| Nov 15 | Buy-task requests name only the general kind of product (plus at most one common feature and a budget) | The first version copied product details ("Japanese body lotion with sake yeast"): keyword search alone ranked the gold first in 38% of tasks. Now 17%, so the user's history has to matter |
+| Nov 15 | Buy-task acceptable set (first pass, in code) = other candidates that meet the hard constraints and are from a brand the user rated 4–5 before | The plan's "meets constraints and the user's preferences"; the team hand-checks it on the gold subset |
+| Nov 15 | Tasks are committed (`tasks/beauty.jsonl`); the database is rebuilt locally | The build is deterministic (seed 0), so product and user IDs match on every machine |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
 
 ## Data
@@ -91,14 +95,30 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 
 Top categories: Hair Care 59K, Skin Care 48K, Foot/Hand/Nail 30K, Makeup 25K, Tools 24K, Shave 11K, Personal Care 9K, Fragrance 8.5K. Every history item has metadata.
 
-Notes for the task generator:
+Notes from building the store (the first two are handled in #7):
 - Only 57% of products have a price, so shelves for budget tasks must come from priced products.
 - Fake reviews are dated 2026-09-28 (fake-store time); for real tasks they must be dated just before the task's `as_of`, or they'll look like they come from the future.
 - Real review dates end in Sep 2023, so `as_of` comes from each user's history, not a fixed date.
+
+## Real buy tasks (Nov 15)
+
+`python -m cartblanche.env.taskgen --buy 150 --call-gap 4` (seed 0, about 13 minutes, $0.04). 150 tasks: 40 dev, 110 test; shelves of 50 (gold, 9 distractors, 40 fillers from the same narrow category); visible history before the gold has a median of 10 items. 53% have a required feature; 11% have acceptable alternatives besides the gold. Keyword search on the request ranks the gold first in 17% and in the top 10 in 51% (chance is 2% and 20%).
+
+First runs on the 40 dev tasks (Nov 15, one run each):
+
+| Config | Tasks run | Correct | Constraints met | Invalid | Steps | Tokens / task | $ / task | p50 latency |
+|---|---|---|---|---|---|---|---|---|
+| E0 | 40 | 6/40 (15%) | 100% | 0 | 1 | 0 | 0 | 0.04 s |
+| E1 | 28 of 40 | 2/28 (7%); E0 got 5 of the same 28 | 100% | 0 | 3.9 | 7.3K | $0.003 | 2.7 s |
+| E2 | 0 | not run yet: daily quota | | | | | | |
+
+- E1 and E2 stopped on the Gemini free tier's daily cap (see open questions). Rerun the same commands to resume.
+- Without history, E1 picks a sensible, popular product: 18 of its 26 misses were one of the 9 hard distractors. Guessing a person's real purchase without knowing them is hard, which is the gap history (E3) has to close.
+- E0 beats E1 here because it gets the exact budget and feature from the task and sorts by rating; E1 has to read them from the request.
 
 ## Open questions
 
 - Is Nov 15 the real experiment freeze? The build is behind the plan's schedule.
 - The design doc and the development plan still say Clothing; they need updating for Beauty, including the Nov 4 answer about size vs quality vs brand.
-- Gemini free-tier limits will slow the full matrix (about 60K calls). Enable billing for Week 5, or spread runs over days.
+- **The Gemini free tier allows 500 requests per day for `gemini-3.5-flash-lite`** (hit on Nov 15). One config on the 40 dev tasks takes about 160–250 calls, and the full matrix about 60K, so billing must be enabled before the full runs; on the free tier we can do roughly two dev runs a day.
 - At 3.5 Flash-Lite prices the full matrix costs roughly $40–60 for the agent instead of about $13; the plan's $20–40 budget needs a second look.
