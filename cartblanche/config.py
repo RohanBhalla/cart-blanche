@@ -40,7 +40,7 @@ class RunConfig(BaseModel):
     description: str = ""
     agent: AgentKind = AgentKind.LLM
     # Agent and judge come from different model families so the judge never grades its own family.
-    agent_model: str = "gemini/gemini-2.5-flash-lite"
+    agent_model: str = "gemini/gemini-3.5-flash-lite"
     judge_model: str = "openai/gpt-5.4-nano"
     temperature: float = 0.0
     max_steps: int = 12

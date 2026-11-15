@@ -1,25 +1,34 @@
-"""Command line: python -m cartblanche.eval.run configs/e0_rules.yaml [--out runs]"""
+"""Command line: python -m cartblanche.eval.run configs/e1_generic.yaml [--out runs] [--call-gap 4] [--fresh]"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
+from functools import partial
 from pathlib import Path
 
 from cartblanche.config import load_config
 from cartblanche.env.store import load_fake_store
-from cartblanche.eval.harness import run
+from cartblanche.eval.harness import default_llm, run
+from cartblanche.llm import QuotaExhausted
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run one configuration on the fake store")
     parser.add_argument("config", type=Path)
     parser.add_argument("--out", type=Path, default=Path("runs"))
+    parser.add_argument("--call-gap", type=float, default=0.0,
+                        help="minimum seconds between model calls, e.g. 4 for a 15-requests-per-minute free tier")
+    parser.add_argument("--fresh", action="store_true", help="ignore saved results and rerun every task")
     args = parser.parse_args()
 
     config = load_config(args.config)
     catalog, tasks = load_fake_store()
-    card = run(config, catalog, tasks, args.out)
+    try:
+        card = run(config, catalog, tasks, args.out, partial(default_llm, call_gap_s=args.call_gap), fresh=args.fresh)
+    except QuotaExhausted as e:
+        sys.exit(f"Daily quota used up; finished tasks are saved. Run the same command later to resume.\n{e}")
     print(json.dumps(card, indent=2))
     print(f"\nWrote {args.out / config.config_id}/")
 

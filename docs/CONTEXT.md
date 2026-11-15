@@ -12,8 +12,8 @@ This file is the shared memory for anyone working on the repo, people and AI age
 |---|---|---|
 | Week 0: contracts (`schemas.py`), config, `llm.py`, fake store + tasks, store tools, attack injector | done | #1, #2 |
 | Eval harness, code-checked metrics and scorecard, E0 rules baseline | done | #3 |
-| Real data: stream Clothing into SQLite, real `Catalog` | **next** | |
-| E1 generic LLM agent (tool-calling loop) and E2 intent parser (with brand field) | **next** | |
+| Beauty fake store; E1 generic LLM agent (tool-calling loop); E2 intent parser (with brand field); free-tier retries and resumable runs | done | #5 |
+| Real data: stream Beauty into SQLite, real `Catalog` | **next** | |
 | Task generator (buy, relationship, override, ambiguous, brand, edge cases) | to do | |
 | Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
@@ -24,7 +24,20 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | E8 clarifying question and simulated user | to do | |
 | Dose sweeps, full matrix, variance, scorecard, failure analysis | to do | |
 
-E0 on the 11 fake tasks gets 2 of 11 right. It always buys, so it misses every skip; it always meets the stated constraints, and fake reviews never move it, because it doesn't read reviews.
+E0 on the 11 beauty fake tasks gets 4 of 11 right. It always buys, so it misses every skip; it meets the stated constraints but matches keywords, so it buys a sunscreen for a moisturizer request. Fake reviews never move it, because it doesn't read reviews.
+
+First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so small-sample):
+
+| Config | Lenient | Strict | Missed skip | Invalid | Steps | Tokens / task | $ / task | p50 latency |
+|---|---|---|---|---|---|---|---|---|
+| E0 | 4/11 | 3/11 | 1.0 | 0 | 1 | 0 | 0 | 0 s |
+| E1 | 9/11 | 8/11 | 1.0 | 0 | 4.6 | 3.4K | $0.001 | 2.3 s |
+| E2 | 8/11 | 8/11 | 1.0 | 0 | 5.4 | 4.2K | $0.002 | 3.5 s |
+
+- E1 and E2 both buy the duplicate hair dryer, as expected: they can't see history.
+- The fake store is too easy without history: on most tasks the generically best product is also the gold. Real-data tasks need distractors that beat the gold on rating and fit the request but not the user.
+- t004 (foundation): E1 read both products' reviews, saw "oxidizes" on Shadeworks and bought Truetone (lenient right; it said BUY where the gold is ALTERNATIVE). E2 skipped the reviews and bought the Shadeworks foundation that oxidized on this user. Neither knew the user's history.
+- The fake review (t010) didn't fool either agent: the target's genuine reviews and rating were bad enough.
 
 ## Decisions
 
@@ -35,26 +48,37 @@ E0 on the 11 fake tasks gets 2 of 11 right. It always buys, so it misses every s
 | Oct 22 | Importing a user's real Amazon order export is an optional Week 6 demo, not core | Not needed for the evaluation |
 | Oct 26 | Stack: Python 3.12, pip + venv, pydantic, LiteLLM behind `llm.py`, a plain tool-calling loop | Simple, and switching models is one string |
 | Oct 26 | Agent `gemini/gemini-2.5-flash-lite`; judge `openai/gpt-5.4-nano` | Cheap tier, and the judge is a different family from the agent |
-| Oct 27 | Category: **Clothing_Shoes_and_Jewelry** | Matches the design doc |
+| Oct 27 | Category: Clothing_Shoes_and_Jewelry | Matches the design doc |
 | Oct 27 | Actions are **BUY / ALTERNATIVE / SKIP**; WAIT dropped | The data can't justify WAIT |
 | Nov 4 | E0 is scored with the code metrics only, no judge | It gives no explanation to judge |
 | Nov 4 | Brand: hard (filter), soft (preference) or empty (filled from history as a soft preference) | Milestone 2 feedback |
 | Nov 4 | Histories are real reviews only; choose real users who fit each case | Milestone 2 feedback |
 | Nov 4 | Fake reviews have varied text, 3 seeds per task and dose, and are saved and reused; plus one copy-paste variant | Every config faces the same attacks |
-| Nov 4 | History agent tags each past review with a reason (fit, quality, style, other), size if mentioned, and date | Tell a wrong size apart from bad quality |
+| Nov 4 | History agent tags each past review with a reason (fit, quality, style, other), size if mentioned, and date. For Beauty this maps to reaction / quality / scent-or-shade / other, with shade or skin type in place of size (to confirm with the team) | Tell a bad match apart from bad quality |
+| Nov 14 | Category switched to **Beauty_and_Personal_Care** (replaces Clothing) | Taste (skin and hair type, shade, scent, reactions) decides purchases, so personalization matters more; restock vs duplicate makes relationship tasks harder; beauty fake reviews make checkable claims; 14 GB of raw files instead of 46 GB |
+| Nov 14 | `Constraints.size` dropped; `required_features` (e.g. "fragrance-free") is checked against the product's own text by `store.has_features` | Size was clothing-specific; features are what beauty requests state |
+| Nov 14 | A cached model reply keeps its original cost and latency; `Usage.spent_usd` counts real spend | Reruns must produce identical scorecards |
+| Nov 14 | Bad agent output is scored invalid, never retried | Keeps the invalid-output rate honest |
+| Nov 14 | Agent model is now `gemini/gemini-3.5-flash-lite` (was 2.5 Flash-Lite) | Google closed 2.5 Flash-Lite to new API keys (404). 3.5 Flash-Lite costs $0.30 / $2.50 per M tokens (vs $0.10 / $0.40) and rejects `temperature`, so LiteLLM drops it; the cache keeps reruns stable |
+| Nov 14 | LiteLLM pinned to >= 1.109.1 | 1.106.4 crashed on any tool call (`No module named 'mcp'`) |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
 
 ## Data
 
 - Source: Hugging Face `McAuley-Lab/Amazon-Reviews-2023`. The UCSD download links on the dataset page return 404.
-  - `raw/review_categories/Clothing_Shoes_and_Jewelry.jsonl`: 27.8 GB, 66M reviews
-  - `raw/meta_categories/meta_Clothing_Shoes_and_Jewelry.jsonl`: 18.0 GB, 7.2M products
-  - `benchmark/5core/rating_only/Clothing_Shoes_and_Jewelry.csv`: 1.3 GB, user / item / rating / timestamp only
-- The files are uncompressed, and there is no Parquet version. The plan is to **stream and filter** into `data/cartblanche.sqlite` (git-ignored) rather than store the raw files: use the 5-core index to pick users with 8+ reviews and products with 5+ reviews, then one pass over metadata and one over reviews. That is about 40 minutes at roughly 20 MB/s.
-- **Reviews have no size field.** Size and fit come only from review text ("ordered a medium"), so fit tasks are built only from reviews that mention a size.
+  - `raw/review_categories/Beauty_and_Personal_Care.jsonl`: 11.0 GB
+  - `raw/meta_categories/meta_Beauty_and_Personal_Care.jsonl`: 2.8 GB
+  - `benchmark/5core/rating_only/Beauty_and_Personal_Care.csv`: 0.38 GB, user / item / rating / timestamp only. 6.6M rows; 730K users with 5+ reviews, 277K with 8+, 68K with 15+; 208K products
+- The files are uncompressed, and there is no Parquet version. The plan is to **stream and filter** into `data/cartblanche.sqlite` (git-ignored) rather than store the raw files: use the 5-core index to pick users with 8+ reviews and products with 5+ reviews, then one pass over metadata and one over reviews. That is about 11 minutes at roughly 20 MB/s. The database should be about 0.3–1 GB.
+- **Reviews have no shade, skin-type or size field.** Those come only from review text ("too dark for me", "broke me out") or product details ("Skin Type", "Hair Type", "Scent"), so match tasks are built only from reviews that say them.
+- **Watch for repurchases.** Beauty users often rebuy the same item. When building buy tasks, separate exact repurchases (a restock task) from new-product gold picks, or "predict the purchase" becomes "pick what they bought before".
+- Other categories checked on Nov 14 (5-core users with 8+ reviews): Clothing 1.07M, Pet Supplies 240K, Grocery 170K, Toys 167K, Video Games 35K. Amazon_Fashion has no 5-core file and only 3.9K users with 8+ reviews in its raw file.
 - Review fields: rating, title, text, images, asin, parent_asin, user_id, timestamp, helpful_vote, verified_purchase.
 
 ## Open questions
 
 - Is Nov 15 the real experiment freeze? The build is behind the plan's schedule.
 - Approval to start the data streaming step.
+- The design doc and the development plan still say Clothing; they need updating for Beauty, including the Nov 4 answer about size vs quality vs brand.
+- Gemini free-tier limits will slow the full matrix (about 60K calls). Enable billing for Week 5, or spread runs over days.
+- At 3.5 Flash-Lite prices the full matrix costs roughly $40–60 for the agent instead of about $13; the plan's $20–40 budget needs a second look.

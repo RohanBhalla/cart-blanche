@@ -2,9 +2,16 @@
 
 Every model call goes through LLM.complete, which
   * caches responses on disk, so reruns of an unchanged config are free,
-  * logs tokens, latency and cost for every call (cached calls cost 0).
+  * logs tokens, latency and cost for every call,
+  * retries rate limits and timeouts with backoff, and can keep a minimum
+    gap between calls (for the Gemini free tier).
 
-LiteLLM does the provider routing (e.g. "gemini/gemini-2.5-flash-lite",
+A cached response keeps the cost and latency of the original call, so a
+rerun scores exactly like the first run; Usage.spent_usd counts only what
+was actually paid this time. When a daily quota runs out, QuotaExhausted is
+raised so the run stops and can be resumed later.
+
+LiteLLM does the provider routing (e.g. "gemini/gemini-3.5-flash-lite",
 "openai/gpt-5.4-nano"). Tests pass a fake completion_fn instead.
 """
 
@@ -19,6 +26,13 @@ from pathlib import Path
 from typing import Any
 
 CompletionFn = Callable[..., Any]
+
+# LiteLLM exception names worth retrying (matched by name so this module doesn't import litellm)
+RETRYABLE = {"RateLimitError", "Timeout", "APIConnectionError", "ServiceUnavailableError", "InternalServerError"}
+
+
+class QuotaExhausted(RuntimeError):
+    """A daily quota ran out: retrying today won't help, so the run should stop."""
 
 
 @dataclass
@@ -50,8 +64,13 @@ class Usage:
     cached_calls: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
-    cost_usd: float = 0.0
+    cost_usd: float = 0.0  # cost of every call, cached or not (what the scorecard reports)
+    spent_usd: float = 0.0  # cost of calls actually made this time
     latency_s: float = 0.0
+
+    @property
+    def tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
 
     def add(self, r: LLMResponse) -> None:
         self.calls += 1
@@ -59,6 +78,7 @@ class Usage:
         self.prompt_tokens += r.prompt_tokens
         self.completion_tokens += r.completion_tokens
         self.cost_usd += r.cost_usd
+        self.spent_usd += 0.0 if r.cached else r.cost_usd
         self.latency_s += r.latency_s
 
 
@@ -67,7 +87,8 @@ def _litellm_completion(**kwargs: Any) -> Any:
     from dotenv import load_dotenv
 
     load_dotenv()  # API keys from .env; real environment variables take precedence
-    return litellm.completion(**kwargs)
+    # drop_params: newer models (e.g. gemini-3.5-flash-lite) reject temperature; the cache keeps reruns stable
+    return litellm.completion(timeout=60, drop_params=True, **kwargs)
 
 
 def _litellm_cost(raw: Any) -> float:
@@ -108,7 +129,12 @@ class LLM:
     log_path: Path | None = None
     completion_fn: CompletionFn = _litellm_completion
     cost_fn: Callable[[Any], float] = _litellm_cost
+    min_gap_s: float = 0.0  # minimum seconds between real calls (free-tier rate limits)
+    max_retries: int = 5
+    retry_wait_s: float = 10.0  # doubles on every retry: 10, 20, 40, 80, 160 s
+    sleep: Callable[[float], None] = time.sleep
     usage: Usage = field(default_factory=Usage)
+    _last_call: float = field(default=0.0, repr=False)
 
     def _key(self, request: dict[str, Any]) -> str:
         return hashlib.sha256(json.dumps(request, sort_keys=True, default=str).encode()).hexdigest()
@@ -129,17 +155,15 @@ class LLM:
 
         if cache_file and cache_file.exists():
             data = json.loads(cache_file.read_text())
-            cached, cost, latency = True, 0.0, 0.0
+            cached = True
         else:
-            start = time.perf_counter()
-            raw = self.completion_fn(**request)
-            latency = time.perf_counter() - start
-            data = _to_dict(raw)
-            cost = self.cost_fn(raw)
+            raw, latency = self._call(request)
+            data = {**_to_dict(raw), "_cost_usd": self.cost_fn(raw), "_latency_s": latency}
             cached = False
             if cache_file:
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
                 cache_file.write_text(json.dumps(data, default=str))
+        cost, latency = float(data.get("_cost_usd", 0.0)), float(data.get("_latency_s", 0.0))
 
         message, calls, p_tok, c_tok = _parse(data)
         resp = LLMResponse(
@@ -155,6 +179,27 @@ class LLM:
         self.usage.add(resp)
         self._log(tag, key, resp)
         return resp
+
+    def _call(self, request: dict[str, Any]) -> tuple[Any, float]:
+        """One real call, with the minimum gap and retries. Returns (raw response, latency)."""
+        for attempt in range(self.max_retries + 1):
+            wait = self._last_call + self.min_gap_s - time.monotonic()
+            if wait > 0:
+                self.sleep(wait)
+            self._last_call = time.monotonic()
+            start = time.perf_counter()
+            try:
+                raw = self.completion_fn(**request)
+                return raw, time.perf_counter() - start
+            except Exception as e:
+                if type(e).__name__ not in RETRYABLE:
+                    raise
+                if "perday" in str(e).lower().replace(" ", "").replace("_", ""):
+                    raise QuotaExhausted(str(e)) from e
+                if attempt == self.max_retries:
+                    raise
+                self.sleep(self.retry_wait_s * 2**attempt)
+        raise AssertionError("unreachable")
 
     def _log(self, tag: str, key: str, r: LLMResponse) -> None:
         if not self.log_path:

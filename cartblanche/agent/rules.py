@@ -1,7 +1,7 @@
 """E0: the non-LLM baseline.
 
 Search the shelf with the request text, drop products that break a stated
-constraint (budget, size, hard brand), then buy the highest-rated of the top
+constraint (budget, rating, required features, hard brand), then buy the highest-rated of the top
 few hits. It never skips and never reads history, so E1 minus E0 is what
 GenAI adds.
 """
@@ -9,13 +9,14 @@ GenAI adds.
 from __future__ import annotations
 
 from cartblanche.config import RunConfig
-from cartblanche.env.store import TaskStore
-from cartblanche.schemas import Action, AgentResult, BrandStrength, Task, spec_evidence_id
+from cartblanche.env.store import TaskStore, has_features
+from cartblanche.llm import LLM
+from cartblanche.schemas import Action, AgentResult, BrandStrength, Product, Task, spec_evidence_id
 
 TOP_HITS = 5
 
 
-def run_rules_agent(task: Task, store: TaskStore, config: RunConfig) -> AgentResult:
+def run_rules_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM | None = None) -> AgentResult:
     c = task.constraints
     filters = {"max_price": c.max_price, "min_rating": c.min_rating}
     if c.brand.strength == BrandStrength.HARD:
@@ -23,8 +24,8 @@ def run_rules_agent(task: Task, store: TaskStore, config: RunConfig) -> AgentRes
     filters = {k: v for k, v in filters.items() if v is not None}
 
     hits = store.search_products(task.request, filters, limit=len(store.shelf))
-    if c.size:
-        hits = [h for h in hits if c.size in store.get_product(h["id"])["details"].get("sizes", [])]
+    if c.required_features:
+        hits = [h for h in hits if has_features(Product(**store.get_product(h["id"])), c.required_features)]
     trace = [{"tool": "search_products", "query": task.request, "filters": filters, "hits": [h["id"] for h in hits]}]
 
     if not hits:

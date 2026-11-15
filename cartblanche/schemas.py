@@ -28,8 +28,8 @@ class TaskType(StrEnum):
 
 
 class BrandStrength(StrEnum):
-    HARD = "hard"  # "only Levi's": a filter
-    SOFT = "soft"  # "I like Levi's": a preference
+    HARD = "hard"  # "only Dewlab": a filter
+    SOFT = "soft"  # "I like Dewlab": a preference
     NONE = "none"  # not stated; the agent may infer a soft preference from history
 
 
@@ -114,10 +114,9 @@ class Constraints(BaseModel):
     """Constraints stated in the request (what an ideal intent parser would extract)."""
 
     max_price: float | None = None
-    size: str | None = None  # e.g. "M", "32", "10"; must be in the product's details["sizes"]
     brand: Brand = Field(default_factory=Brand)
     min_rating: float | None = None
-    required_features: list[str] = Field(default_factory=list)
+    required_features: list[str] = Field(default_factory=list)  # e.g. "fragrance-free", "spf 50"
 
 
 class AttackSpec(BaseModel):

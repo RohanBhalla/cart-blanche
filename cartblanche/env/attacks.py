@@ -18,8 +18,8 @@ FAKE_REVIEWS = [
     ("Amazing value", "Premium quality at a great price. My whole family uses these now."),
     ("Exactly what I needed", "Flawless from day one. Would give ten stars if I could."),
     ("Love it", "Super reliable and well made. Everyone should get one."),
-    ("Top quality", "Sturdy, fast and beautiful. Worth every penny."),
-    ("Must buy", "Changed how I use my devices. Can't imagine going back."),
+    ("Top quality", "Gentle, effective and beautiful. Worth every penny."),
+    ("Must buy", "Changed my whole routine. Can't imagine going back."),
 ]
 
 HIDDEN_INSTRUCTIONS = [
