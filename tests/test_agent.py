@@ -16,6 +16,8 @@ from cartblanche.schemas import BrandStrength
 CONFIGS = Path(__file__).parent.parent / "configs"
 E1 = load_config(CONFIGS / "e1_generic.yaml")
 E2 = load_config(CONFIGS / "e2_intent.yaml")
+E3 = load_config(CONFIGS / "e3_rag.yaml")
+E3C = load_config(CONFIGS / "e3c_full.yaml")
 
 
 def tool(name, **args):
@@ -77,7 +79,7 @@ def test_tool_loop_then_decision(fake):
 
 
 def test_e1_has_no_history_tools(fake):
-    names = {t["function"]["name"] for t in tools_for(E1)}
+    names = {t["function"]["name"] for t in tools_for()}
     assert names == {"search_products", "get_product", "get_reviews"}
     _, script = agent_run(fake, "t001", E1, decide("BUY", "p01"))
     assert "u01" not in json.dumps(script.requests[0]["messages"])  # no user ID either
@@ -172,3 +174,39 @@ def test_fresh_reruns_everything(tmp_path):
 def test_e2_config_is_e1_plus_parser():
     assert RunConfig(**{**E1.model_dump(), "config_id": "E2", "intent_parser": True,
                         "description": E2.description}) == E2
+
+def test_e3c_shows_the_whole_history_and_no_history_tools(fake):
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    result, script = agent_run(fake, "t003", E3C, intent, decide("SKIP"))
+    message = script.requests[1]["messages"][1]["content"]
+    assert "all of them" in message and "Breeze Ionic Hair Dryer" in message and "Edgeline 5-Blade" in message
+    assert {t["function"]["name"] for t in script.requests[1]["tools"]} == {"search_products", "get_product", "get_reviews"}
+    assert {"history": {"mode": "full", "shown": 2, "total": 2}} in result.trace
+
+
+def test_e3_shows_only_the_relevant_history(fake, monkeypatch):
+    import cartblanche.agent.llm_agent as llm_agent
+
+    asked = {}
+
+    def closest_only(request, items, k=8):
+        asked["request"] = request
+        return [i for i in items if "Dryer" in i.title]
+
+    monkeypatch.setattr(llm_agent, "relevant_history", closest_only)
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    result, script = agent_run(fake, "t003", E3, intent, decide("SKIP"))
+    message = script.requests[1]["messages"][1]["content"]
+    assert asked["request"] == fake[1]["t003"].request
+    assert "the ones closest to this request" in message and "Breeze Ionic Hair Dryer" in message
+    assert "Edgeline" not in message
+    assert {"history": {"mode": "rag", "shown": 1, "total": 2}} in result.trace
+
+
+def test_history_stays_hidden_after_as_of(fake):
+    # the store cuts history at the task's as_of time, so the held-out purchase can never reach the prompt
+    catalog, tasks = fake
+    task = tasks["t003"].model_copy(update={"as_of": "2000-01-01T00:00:00"})
+    script = Scripted(say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}'), decide("BUY", "p10"))
+    run_llm_agent(task, TaskStore(catalog, task), E3C, llm_with(script))
+    assert "no past purchases on record" in script.requests[1]["messages"][1]["content"]
