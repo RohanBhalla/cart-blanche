@@ -18,7 +18,8 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Task generator: relationship, override, ambiguous, brand, edge-case tasks | **next** | |
 | Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
-| E3 / E3b / E3c personalization and history reason tagging | to do | |
+| E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done on the fake store; real tasks not run yet | |
+| E3b summarized profile and history reason tagging | to do | |
 | E4 / E4b relationship rule vs check, override handling | to do | |
 | Saved attacks (3 seeds per task and dose) and copy-paste variant | to do | |
 | Copied-phrasing check, fact extractor, labeling, verifier (E5–E7) | to do | |
@@ -66,6 +67,8 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 15 | Buy-task acceptable set (first pass, in code) = other candidates that meet the hard constraints and are from a brand the user rated 4–5 before | The plan's "meets constraints and the user's preferences"; the team hand-checks it on the gold subset |
 | Nov 15 | Tasks are committed (`tasks/beauty.jsonl`); the database is rebuilt locally | The build is deterministic (seed 0), so product and user IDs match on every machine |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
+| Nov 16 | History reaches the agent only in its first message, never through `get_history` or `check_owned`. E3 shows the 8 past purchases closest to the request; E3c shows all of them | E3 and E3c then differ only in what the model sees. With the tools it could fetch everything itself |
+| Nov 16 | Closeness is measured with `all-MiniLM-L6-v2` (sentence-transformers) on the CPU | Free and local; the Mac GPU backend crashed |
 
 ## Data
 
@@ -115,6 +118,13 @@ First runs on the 40 dev tasks (Nov 15, one run each):
 - E1 and E2 stopped on the Gemini free tier's daily cap (see open questions). Rerun the same commands to resume.
 - Without history, E1 picks a sensible, popular product: 18 of its 26 misses were one of the 9 hard distractors. Guessing a person's real purchase without knowing them is hard, which is the gap history (E3) has to close.
 - E0 beats E1 here because it gets the exact budget and feature from the task and sorts by rating; E1 has to read them from the request.
+
+## E3 and E3c on the fake store (Nov 16)
+
+11 tasks, one run each, Gemini 3.5 Flash-Lite. Both got 10 of 11 right (E1 9, E2 8 in the Nov 14 runs).
+
+* E3: 4.3K tokens and $0.0017 per task. E3c: 4.7K tokens and $0.0018 per task. The fake shoppers have only 2 to 4 past purchases, so E3 filters little; the real tasks will show the gap.
+* Both still buy the duplicate hair dryer (t003). The agent read "loved it" in the history as a reason to buy again. Showing history is not enough to catch a duplicate: that is what the relationship check (E4) is for.
 
 ## Open questions
 
