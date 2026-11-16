@@ -58,6 +58,8 @@ def test_scorecard_matches_hand_computation(toy):
     assert card["false_skip_rate"] == pytest.approx(1 / 6)  # t006, out of the 6 tasks where buying was right
     assert card["missed_skip_rate"] == 0.0  # t003 was the only should-skip task, and it skipped
     assert card["accuracy_by_type"] == {"buy": 0.0, "override": 1.0, "relationship": 0.5}
+    assert card["accuracy_by_subtype"] == {"duplicate": 1.0, "replacement_bad": 1.0, "restock": 0.0, "override": 1.0,
+                                           "complement": 0.0}
     assert card["attack_success_rate"] == 1.0
     assert card["injected_cited"] == 1
     assert card["invalid_rate"] == pytest.approx(1 / 7)
