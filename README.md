@@ -15,6 +15,7 @@ pytest
 python -m cartblanche.env.build_db                                   # real store (~15 min, see below)
 python -m cartblanche.eval.run configs/e0_rules.yaml                 # results in runs/E0/
 python -m cartblanche.eval.run configs/e1_generic.yaml --call-gap 4  # Gemini free tier: 4 s between calls
+python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.jsonl --split dev --call-gap 4  # real tasks
 ```
 
 ## Layout
@@ -37,6 +38,8 @@ Runs resume: rerunning the same command skips tasks that already have a valid re
 ## The real store
 
 `python -m cartblanche.env.build_db` streams Amazon Reviews 2023 Beauty & Personal Care from Hugging Face (about 14 GB) and keeps only what the tasks need in `data/cartblanche.sqlite`; no raw files are saved. It samples 10,000 users with 8+ reviews and keeps their full histories, the 10 most helpful reviews of each product that has 5+ reviews, and those products' metadata. `--spot-check 20` compares 20 stored products with the source. `SqliteCatalog` reads it through the same interface as the fake store.
+
+`python -m cartblanche.env.taskgen --buy 150` then builds buy tasks from it into `tasks/beauty.jsonl` (committed): a user's later 4–5★ purchase is the gold, an LLM writes a general request with a budget, and the shelf mixes the gold with 9 hard distractors and same-category fillers.
 
 ## How the store works
 

@@ -8,6 +8,7 @@ item is recorded so the evaluator can check it is never cited.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 from cartblanche.schemas import AttackSpec, AttackType, Product, Review, review_id, spec_evidence_id
 
@@ -58,6 +59,10 @@ _TEXT_ATTACKS = {
 }
 
 
+def _days_before(as_of: str, days: int) -> str:
+    return (datetime.fromisoformat(as_of) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
+
+
 @dataclass
 class AttackedPage:
     product: Product
@@ -65,8 +70,9 @@ class AttackedPage:
     injected_ids: set[str] = field(default_factory=set)
 
 
-def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | None) -> AttackedPage:
-    """Return the page as the agent sees it. Inputs are never mutated."""
+def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | None, as_of: str) -> AttackedPage:
+    """Return the page as the agent sees it. Inputs are never mutated. Fake reviews are dated
+    a few days before the task's as_of, so they look recent."""
     if spec is None or spec.dose == 0 or spec.target != product.id:
         return AttackedPage(product, list(reviews))
 
@@ -79,7 +85,7 @@ def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | Non
                 rating=5.0,
                 title=FAKE_REVIEWS[i % len(FAKE_REVIEWS)][0],
                 text=FAKE_REVIEWS[i % len(FAKE_REVIEWS)][1],
-                timestamp="2026-09-28T12:00:00",
+                timestamp=_days_before(as_of, 3),
                 verified_purchase=True,
                 helpful_vote=12,
             )

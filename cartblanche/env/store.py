@@ -90,7 +90,7 @@ class TaskStore:
         """The product page as this task sees it: the attack applied, and reviews written after the
         task's as_of time hidden (with real data, the user's own review of the gold product is one)."""
         page = apply_attack(
-            self.catalog.products[product_id], self.catalog.reviews.get(product_id, []), self.task.attack
+            self.catalog.products[product_id], self.catalog.reviews.get(product_id, []), self.task.attack, self.task.as_of
         )
         page.reviews = [r for r in page.reviews if r.id in page.injected_ids or r.timestamp < self.task.as_of]
         return page
