@@ -1,6 +1,7 @@
 """Task generator: builds tasks with ground truth from real user histories.
 
-    python -m cartblanche.env.taskgen --buy 150     # writes tasks/beauty.jsonl
+    python -m cartblanche.env.taskgen --buy 150     # buy tasks -> tasks/beauty.jsonl
+    python -m cartblanche.env.taskgen --other       # all other types -> tasks/beauty_other.jsonl (env/task_types.py)
 
 Buy tasks (the plan's "hold out a later purchase"):
   * Gold: one of the user's 4-5 star reviews, on a priced product, with at least
@@ -128,9 +129,15 @@ def meets(product: Product, c: Constraints) -> bool:
 
 
 def build_shelf(gold: Product, constraints: Constraints, history: list[HistoryItem], index: Index,
-                rng: random.Random) -> tuple[list[str], list[str]]:
-    """(shelf, distractors) for one buy task."""
-    pool = [p for p in index.category(gold) if p.id != gold.id and p.id not in {h.product_id for h in history}]
+                rng: random.Random, first: tuple[Product, ...] = (),
+                filler_pool: list[Product] | None = None) -> tuple[list[str], list[str]]:
+    """(shelf, distractors) around a product (the gold, or for a SKIP task the item in question).
+
+    `first` are distractors that must be included (e.g. the product the user rated badly);
+    `filler_pool` replaces the same-category fillers (ambiguous tasks use sibling categories)."""
+    owned = {h.product_id for h in history}
+    forced = {p.id for p in first}
+    pool = [p for p in index.category(gold) if p.id != gold.id and p.id not in owned and p.id not in forced]
     disliked = {(h.brand or "").lower() for h in history if h.rating <= 2 and h.brand}
 
     def rank(p: Product):  # disliked brands first, then popular, then near the gold's price
@@ -139,11 +146,12 @@ def build_shelf(gold: Product, constraints: Constraints, history: list[HistoryIt
     near = [p for p in pool if 0.5 * gold.price <= p.price <= 2 * gold.price]
     fits = sorted((p for p in near if meets(p, constraints)), key=rank)
     breaks = sorted((p for p in near if not meets(p, constraints)), key=rank)
-    distractors = breaks[:N_BREAK_CONSTRAINTS]
+    distractors = list(first)
+    distractors += breaks[: max(0, N_BREAK_CONSTRAINTS - len(distractors))]
     distractors += fits[: N_DISTRACTORS - len(distractors)]
     distractors += breaks[N_BREAK_CONSTRAINTS:][: N_DISTRACTORS - len(distractors)]  # if too few fit
     chosen = {gold.id, *(p.id for p in distractors)}
-    rest = [p.id for p in pool if p.id not in chosen]
+    rest = [p.id for p in (pool if filler_pool is None else filler_pool) if p.id not in chosen and p.id not in owned]
     fillers = rng.sample(rest, min(SHELF_SIZE - len(chosen), len(rest)))
     shelf = [gold.id, *(p.id for p in distractors), *fillers]
     rng.shuffle(shelf)
@@ -194,12 +202,13 @@ def generate_buy_tasks(catalog, llm: LLM, n: int, seed: int = 0, min_history: in
 
 
 def report(tasks: list[Task], catalog) -> dict:
-    """How guessable each task is from the request alone: the gold's rank in a plain keyword search
+    """How guessable each task is from the request alone: the gold's (or SKIP task's item's) rank in a plain keyword search
     of the request. If it's often first, the requests are too specific and history won't matter."""
     ranks = []
     for t in tasks:
         hits = [h["id"] for h in TaskStore(catalog, t).search_products(t.request, limit=len(t.shelf))]
-        ranks.append(hits.index(t.gold_pick) + 1 if t.gold_pick in hits else None)
+        target = t.gold_pick or t.candidates[0]  # SKIP tasks: the product in question
+        ranks.append(hits.index(target) + 1 if target in hits else None)
     n = len(tasks) or 1
     return {
         "tasks": len(tasks),
@@ -223,16 +232,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate tasks from the real store")
     parser.add_argument("--buy", type=int, default=150)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--out", type=Path, default=TASKS_DIR / "beauty.jsonl")
+    parser.add_argument("--other", action="store_true", help="generate the non-buy task types instead")
+    parser.add_argument("--out", type=Path, help="default: tasks/beauty.jsonl, or tasks/beauty_other.jsonl with --other")
     parser.add_argument("--call-gap", type=float, default=0.0)
     args = parser.parse_args()
     llm = LLM(model=RunConfig(config_id="taskgen").agent_model, log_path=Path("runs/taskgen/calls.jsonl"),
               min_gap_s=args.call_gap)
     catalog = SqliteCatalog()
-    tasks = generate_buy_tasks(catalog, llm, args.buy, args.seed)
-    save_tasks(tasks, args.out)
+    if args.other:
+        from cartblanche.env.task_types import generate_more_tasks
+
+        tasks, out = generate_more_tasks(catalog, llm, args.seed), args.out or TASKS_DIR / "beauty_other.jsonl"
+    else:
+        tasks, out = generate_buy_tasks(catalog, llm, args.buy, args.seed), args.out or TASKS_DIR / "beauty.jsonl"
+    save_tasks(tasks, out)
     print(json.dumps(report(tasks, catalog), indent=2))
-    print(f"Wrote {len(tasks)} tasks to {args.out} ({llm.usage.calls} model calls, ${llm.usage.spent_usd:.3f})")
+    print(f"Wrote {len(tasks)} tasks to {out} ({llm.usage.calls} model calls, ${llm.usage.spent_usd:.3f})")
 
 
 if __name__ == "__main__":
