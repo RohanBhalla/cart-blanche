@@ -19,7 +19,7 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
 | E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done on the fake store; real tasks not run yet | |
-| E3b summarized profile and history reason tagging | to do | |
+| E3b summarized profile and history reason tagging | done on fake store (Nov 17) | |
 | E4 / E4b relationship rule vs check, override handling | to do | |
 | Saved attacks (3 seeds per task and dose) and copy-paste variant | to do | |
 | Copied-phrasing check, fact extractor, labeling, verifier (E5–E7) | to do | |
@@ -132,3 +132,15 @@ First runs on the 40 dev tasks (Nov 15, one run each):
 - The design doc and the development plan still say Clothing; they need updating for Beauty, including the Nov 4 answer about size vs quality vs brand.
 - **The Gemini free tier allows 500 requests per day for `gemini-3.5-flash-lite`** (hit on Nov 15). One config on the 40 dev tasks takes about 160–250 calls, and the full matrix about 60K, so billing must be enabled before the full runs; on the free tier we can do roughly two dev runs a day.
 - At 3.5 Flash-Lite prices the full matrix costs roughly $40–60 for the agent instead of about $13; the plan's $20–40 budget needs a second look.
+
+## E3b on the fake store (Nov 17)
+
+E3b writes a short profile of the shopper (at most 120 words) from the past purchases, and the agent sees only that profile. This costs one extra model call per task. A shopper with no history gets no extra call.
+
+Result: 9 of 11 correct (E3 and E3c got 10 of 11).
+
+Two misses:
+- t003 (duplicate): it bought the hair dryer the shopper already owns. Same as E3 and E3c. The relationship check (E4) is the planned fix.
+- t009 (ambiguous): it skipped a perfume request because the profile said the shopper prefers fragrance free products. E3 and E3c did not skip here.
+
+The t009 miss is one task out of 11, so it is only an observation. Re-check it on the real dev tasks before drawing any conclusion about profiles versus raw history.
