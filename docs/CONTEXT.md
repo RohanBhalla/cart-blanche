@@ -144,10 +144,10 @@ First runs on the 36 non-buy dev tasks (Nov 16, one run each):
 |---|---|---|---|---|---|
 | E0 | 7/36 (19%) | 4 of 6 should-skip tasks bought | 0 | 0 | 0 |
 | E1 | 7/36 (19%) | 4 of 6 | 0 | 5.7K | $0.002 |
-| E2 | 22 of 36 run; stopped on the daily cap, resume with the same command | | | | |
+| E2 | 7/36 (19%) | 4 of 6 | 0 | 7.1K | $0.002 |
 
-- Both get only the tasks the request alone can answer: hard brand and brand conflict (the brand is named), nothing fits (no product meets the budget, so they skip). E1 also got 1 of 2 tiny-history tasks.
-- Both score 0 on every history-dependent type: restock, duplicate, replacement, complement, second unit, brand soft, ambiguous, and override (E1 never skips, so the "buy anyway" never comes up; E0 got 1 of 4 by luck). This is what E3 and E4 must fix.
+- All three get the same 7 tasks: only the ones the request alone can answer: hard brand and brand conflict (the brand is named), nothing fits (no product meets the budget, so they skip). E1 and E2 also got 1 of 2 tiny-history tasks. E2's parser adds nothing here, because these requests state almost no constraints.
+- All three score 0 on every history-dependent type: restock, duplicate, replacement, complement, second unit, brand soft, ambiguous, and override (E1 and E2 never skip, so the "buy anyway" never comes up; E0 got 1 of 4 by luck). This is what E3 and E4 must fix.
 
 ## Open questions
 
