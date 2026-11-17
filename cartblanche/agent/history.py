@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from cartblanche.agent.retrieval import rank_by_similarity
 from cartblanche.schemas import HistoryItem
+from cartblanche.llm import LLM
 
 
 def describe(item: HistoryItem) -> str:
@@ -28,3 +29,28 @@ def history_block(items: list[HistoryItem]) -> str:
     if not items:
         return "The shopper has no past purchases on record."
     return "\n".join(f"{n}. {describe(item)}" for n, item in enumerate(items, start=1))
+
+PROFILE_PROMPT = (
+    "Write a short profile of this shopper from their past purchases and reviews, "
+    "in at most 120 words. Cover only what the ratings and reviews support: what they "
+    "liked and why, what went wrong (reactions, bad fit, poor quality), brands they "
+    "trust or avoid, and any skin type, hair type, shade or scent preferences they "
+    "mention. Do not guess and do not invent details. Reply with the profile only."
+)
+
+
+def summarize_profile(items: list[HistoryItem], llm: LLM, tag: str = "") -> str:
+    """Ask the model for a short profile of the shopper (E3b). No history means no model call."""
+    if not items:
+        return history_block(items)
+    reply = llm.complete(
+        [
+            {"role": "system", "content": PROFILE_PROMPT},
+            {"role": "user", "content": history_block(items)},
+        ],
+        tag=f"{tag}/profile",
+    )
+    profile = (reply.content or "").strip()
+    if not profile:
+        raise ValueError("the profile reply was empty")
+    return profile

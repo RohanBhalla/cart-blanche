@@ -17,6 +17,7 @@ CONFIGS = Path(__file__).parent.parent / "configs"
 E1 = load_config(CONFIGS / "e1_generic.yaml")
 E2 = load_config(CONFIGS / "e2_intent.yaml")
 E3 = load_config(CONFIGS / "e3_rag.yaml")
+E3B = load_config(CONFIGS / "e3b_profile.yaml")
 E3C = load_config(CONFIGS / "e3c_full.yaml")
 
 
@@ -210,3 +211,20 @@ def test_history_stays_hidden_after_as_of(fake):
     script = Scripted(say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}'), decide("BUY", "p10"))
     run_llm_agent(task, TaskStore(catalog, task), E3C, llm_with(script))
     assert "no past purchases on record" in script.requests[1]["messages"][1]["content"]
+
+def test_e3b_shows_a_written_profile_instead_of_the_purchases(fake):
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    profile = say("Thick hair. Loves ionic dryers and trusts Breeze.")
+    result, script = agent_run(fake, "t003", E3B, intent, profile, decide("SKIP"))
+    asked_for_profile = script.requests[1]["messages"]
+    assert "Breeze Ionic Hair Dryer" in asked_for_profile[1]["content"]  # the profile writer sees the history
+    message = script.requests[2]["messages"][1]["content"]
+    assert "Thick hair. Loves ionic dryers and trusts Breeze." in message
+    assert "Edgeline" not in message and "rated" not in message  # the agent never sees the raw purchases
+    assert {"history": {"mode": "profile", "total": 2}} in result.trace
+
+
+def test_e3b_empty_profile_is_invalid(fake):
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    result, _ = agent_run(fake, "t003", E3B, intent, say("  "))
+    assert result.error and "profile" in result.error

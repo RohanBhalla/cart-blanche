@@ -20,13 +20,14 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
-from cartblanche.agent.history import history_block, relevant_history
+from cartblanche.agent.history import history_block, relevant_history, summarize_profile
 from cartblanche.agent.intent import parse_intent, parse_json
 from cartblanche.config import Personalization, RunConfig
 from cartblanche.env.store import TaskStore
 from cartblanche.env.tools import TOOL_SPECS, dispatch
 from cartblanche.llm import LLM
 from cartblanche.schemas import Action, AgentResult, HistoryItem, Task
+
 
 HISTORY_TOOLS = {"get_history", "check_owned"}
 
@@ -46,6 +47,8 @@ When you have decided, reply with only this JSON object and nothing else:
 HISTORY_INTRO = """The shopper's past purchases ({which}), with their ratings and reviews.
 Use them to judge what suits this shopper: what they liked, what went wrong, and which brands they trust."""
 
+PROFILE_INTRO = """A short profile of the shopper, written from their past purchases and reviews.
+Use it to judge what suits this shopper: what they liked, what went wrong, and which brands they trust."""
 
 def tools_for() -> list[dict]:
     """The store tools the model may call. History is never a tool: it goes in the first message."""
@@ -56,18 +59,23 @@ def _past_purchases(task: Task, store: TaskStore) -> list[HistoryItem]:
     history = store.get_history(task.user_id)
     return [HistoryItem(**h) for h in history] if isinstance(history, list) else []
 
-
-def _history_section(task: Task, store: TaskStore, config: RunConfig, trace: list[dict]) -> str:
+def _history_section(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
     history = _past_purchases(task, store)
-    if config.personalization == Personalization.RAG:
-        shown, which = relevant_history(task.request, history), "the ones closest to this request"
-    elif config.personalization == Personalization.FULL:
-        shown, which = history, "all of them"
+    mode = config.personalization
+    record = {"mode": mode, "total": len(history)}
+    if mode == Personalization.RAG:
+        shown = relevant_history(task.request, history)
+        text = f"{HISTORY_INTRO.format(which='the ones closest to this request')}\n{history_block(shown)}"
+        record["shown"] = len(shown)
+    elif mode == Personalization.FULL:
+        text = f"{HISTORY_INTRO.format(which='all of them')}\n{history_block(history)}"
+        record["shown"] = len(history)
+    elif mode == Personalization.PROFILE:
+        text = f"{PROFILE_INTRO}\n{summarize_profile(history, llm, task.task_id)}"
     else:
-        raise NotImplementedError(f"personalization {config.personalization} is not built yet")
-    trace.append({"history": {"mode": config.personalization, "shown": len(shown), "total": len(history)}})
-    return f"{HISTORY_INTRO.format(which=which)}\n{history_block(shown)}"
-
+        raise NotImplementedError(f"personalization {mode} is not built yet")
+    trace.append({"history": record})
+    return text
 
 def _first_message(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
     message = f"Request: {task.request}"
@@ -76,7 +84,7 @@ def _first_message(task: Task, store: TaskStore, config: RunConfig, llm: LLM, tr
         trace.append({"intent": requirements.model_dump()})
         message += f"\nStructured requirements: {requirements.model_dump_json()}"
     if config.personalization != Personalization.NONE:
-        message += f"\n\n{_history_section(task, store, config, trace)}"
+        message += f"\n\n{_history_section(task, store, config, llm, trace)}"
     return message
 
 
