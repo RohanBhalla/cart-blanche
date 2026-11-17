@@ -19,6 +19,7 @@ E2 = load_config(CONFIGS / "e2_intent.yaml")
 E3 = load_config(CONFIGS / "e3_rag.yaml")
 E3B = load_config(CONFIGS / "e3b_profile.yaml")
 E3C = load_config(CONFIGS / "e3c_full.yaml")
+E4 = load_config(CONFIGS / "e4_rule.yaml")
 
 
 def tool(name, **args):
@@ -80,7 +81,7 @@ def test_tool_loop_then_decision(fake):
 
 
 def test_e1_has_no_history_tools(fake):
-    names = {t["function"]["name"] for t in tools_for()}
+    names = {t["function"]["name"] for t in tools_for(E1)}
     assert names == {"search_products", "get_product", "get_reviews"}
     _, script = agent_run(fake, "t001", E1, decide("BUY", "p01"))
     assert "u01" not in json.dumps(script.requests[0]["messages"])  # no user ID either
@@ -228,3 +229,23 @@ def test_e3b_empty_profile_is_invalid(fake):
     intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
     result, _ = agent_run(fake, "t003", E3B, intent, say("  "))
     assert result.error and "profile" in result.error
+
+def test_e4_gets_the_history_tools_and_the_user_id(fake, monkeypatch):
+    import cartblanche.agent.llm_agent as llm_agent
+
+    monkeypatch.setattr(llm_agent, "relevant_history", lambda request, items, k=8: items)  # no embedding model here
+    names = {t["function"]["name"] for t in tools_for(E4)}
+    assert names == {"search_products", "get_product", "get_reviews", "get_history", "check_owned"}
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    result, script = agent_run(fake, "t003", E4, intent, decide("SKIP"))
+    system = script.requests[1]["messages"][0]["content"]
+    assert fake[1]["t003"].user_id in system and "check_owned" in system
+    assert "check_owned" in {t["function"]["name"] for t in script.requests[1]["tools"]}
+
+
+def test_versions_before_e4_have_no_history_tools_and_no_user_id_note(fake):
+    for config in (E1, E3, E3C):
+        assert {t["function"]["name"] for t in tools_for(config)} == {"search_products", "get_product", "get_reviews"}
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    _, script = agent_run(fake, "t003", E3C, intent, decide("SKIP"))
+    assert "check_owned" not in script.requests[1]["messages"][0]["content"]

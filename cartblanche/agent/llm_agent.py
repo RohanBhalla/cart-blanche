@@ -22,7 +22,7 @@ from dataclasses import replace
 
 from cartblanche.agent.history import history_block, relevant_history, summarize_profile
 from cartblanche.agent.intent import parse_intent, parse_json
-from cartblanche.config import Personalization, RunConfig
+from cartblanche.config import Personalization, RelationshipMode, RunConfig
 from cartblanche.env.store import TaskStore
 from cartblanche.env.tools import TOOL_SPECS, dispatch
 from cartblanche.llm import LLM
@@ -50,10 +50,25 @@ Use them to judge what suits this shopper: what they liked, what went wrong, and
 PROFILE_INTRO = """A short profile of the shopper, written from their past purchases and reviews.
 Use it to judge what suits this shopper: what they liked, what went wrong, and which brands they trust."""
 
-def tools_for() -> list[dict]:
-    """The store tools the model may call. History is never a tool: it goes in the first message."""
+HISTORY_TOOLS_NOTE = """
+The shopper's user ID is {user_id}. You can also use get_history and check_owned to see what they already bought."""
+
+
+def tools_for(config: RunConfig) -> list[dict]:
+    """The store tools the model may call.
+
+    History reaches E3, E3b and E3c through the first message, never through a tool, so those
+    variants differ only in what the model is shown. Versions that check what the shopper already
+    owns (E4 and later) also get the history tools."""
+    if config.relationship != RelationshipMode.NONE:
+        return TOOL_SPECS
     return [t for t in TOOL_SPECS if t["function"]["name"] not in HISTORY_TOOLS]
 
+
+def system_for(task: Task, config: RunConfig) -> str:
+    if config.relationship != RelationshipMode.NONE:
+        return SYSTEM + HISTORY_TOOLS_NOTE.format(user_id=task.user_id)
+    return SYSTEM
 
 def _past_purchases(task: Task, store: TaskStore) -> list[HistoryItem]:
     history = store.get_history(task.user_id)
@@ -107,7 +122,7 @@ def _decision(task: Task, store: TaskStore, config: RunConfig, content: str | No
 def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> AgentResult:
     before = replace(llm.usage)
     trace: list[dict] = []
-    messages: list[dict] = [{"role": "system", "content": SYSTEM}]
+    messages: list[dict] = [{"role": "system", "content": system_for(task, config)}]
 
     def finish(result: AgentResult) -> AgentResult:
         used = llm.usage
@@ -125,7 +140,7 @@ def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> 
     except ValueError as e:
         return failed(f"intent parser: {e}")
 
-    tools = tools_for()
+    tools = tools_for(config)
     override_sent = False
     for step in range(config.max_steps):
         reply = llm.complete(messages, tools=tools, tag=f"{task.task_id}/agent/{step}")
