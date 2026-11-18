@@ -17,8 +17,10 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Task generator: 150 real buy tasks (`taskgen.py`, `tasks/beauty.jsonl`); `run.py --tasks/--split`; fake reviews dated before `as_of` | done | #7 |
 | Task generator: 178 relationship, override, ambiguous, brand and edge-case tasks (`task_types.py`, `tasks/beauty_other.jsonl`); `Task.subtype` and accuracy by subtype | done | #8 |
 | `eval/compare.py`: configs side by side; scores saved even when a run stops | done | #10 |
-| Product retrieval and History RAG (E3, E3b, E3c) | **next** | |
+| Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
+| E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done on the fake store; real tasks not run yet | #9 |
+| E3b summarized profile | done on fake store (Nov 17) | #9 |
 | History reason tagging | to do | |
 | E4 / E4b relationship rule vs check, override handling | to do | |
 | Saved attacks (3 seeds per task and dose) and copy-paste variant | to do | |
@@ -71,6 +73,8 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 18 | Test runs started: E0 done on all 252 held-out tasks, E1 running | E0 test matches dev (buy 13.6% vs 15%, other 20.4% vs 19%) |
 | Nov 15 | Tasks are committed (`tasks/beauty.jsonl`); the database is rebuilt locally | The build is deterministic (seed 0), so product and user IDs match on every machine |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
+| Nov 16 | History reaches the agent only in its first message, never through `get_history` or `check_owned`. E3 shows the 8 past purchases closest to the request; E3c shows all of them | E3 and E3c then differ only in what the model sees. With the tools it could fetch everything itself |
+| Nov 16 | Closeness is measured with `all-MiniLM-L6-v2` (sentence-transformers) on the CPU | Free and local; the Mac GPU backend crashed |
 
 ## Data
 
@@ -122,6 +126,13 @@ First runs on the 40 dev tasks (Nov 15, one run each):
 - Without history, E1 picks a sensible, popular product: most of its misses were one of the 9 hard distractors. Guessing a person's real purchase without knowing them is hard, which is the gap history (E3) has to close.
 - E0 beats E1 here because it gets the exact budget and feature from the task and sorts by rating; E1 has to read them from the request.
 
+## E3 and E3c on the fake store (Nov 16)
+
+11 tasks, one run each, Gemini 3.5 Flash-Lite. Both got 10 of 11 right (E1 9, E2 8 in the Nov 14 runs).
+
+* E3: 4.3K tokens and $0.0017 per task. E3c: 4.7K tokens and $0.0018 per task. The fake shoppers have only 2 to 4 past purchases, so E3 filters little; the real tasks will show the gap.
+* Both still buy the duplicate hair dryer (t003). The agent read "loved it" in the history as a reason to buy again. Showing history is not enough to catch a duplicate: that is what the relationship check (E4) is for.
+
 ## Other task types (Nov 16)
 
 `python -m cartblanche.env.taskgen --other` (seed 0, under a minute, one model call for readable category names). Each comes from a real event in a user's history, and each user gives at most one task:
@@ -158,3 +169,15 @@ First runs on the 36 non-buy dev tasks (Nov 16, one run each):
 - The design doc and the development plan still say Clothing; they need updating for Beauty, including the Nov 4 answer about size vs quality vs brand.
 - **The Gemini free tier allows 500 requests per day for `gemini-3.5-flash-lite`** (hit on Nov 15). One config on the 40 dev tasks takes about 160–250 calls, and the full matrix about 60K, so billing must be enabled before the full runs; on the free tier we can do roughly two dev runs a day.
 - At 3.5 Flash-Lite prices the full matrix costs roughly $40–60 for the agent instead of about $13; the plan's $20–40 budget needs a second look.
+
+## E3b on the fake store (Nov 17)
+
+E3b writes a short profile of the shopper (at most 120 words) from the past purchases, and the agent sees only that profile. This costs one extra model call per task. A shopper with no history gets no extra call.
+
+Result: 9 of 11 correct (E3 and E3c got 10 of 11).
+
+Two misses:
+- t003 (duplicate): it bought the hair dryer the shopper already owns. Same as E3 and E3c. The relationship check (E4) is the planned fix.
+- t009 (ambiguous): it skipped a perfume request because the profile said the shopper prefers fragrance free products. E3 and E3c did not skip here.
+
+The t009 miss is one task out of 11, so it is only an observation. Re-check it on the real dev tasks before drawing any conclusion about profiles versus raw history.
