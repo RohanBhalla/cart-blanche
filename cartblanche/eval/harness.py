@@ -21,7 +21,7 @@ from pathlib import Path
 
 from cartblanche.agent.llm_agent import run_llm_agent
 from cartblanche.agent.rules import run_rules_agent
-from cartblanche.config import AgentKind, Labeling, Personalization, RelationshipMode, RunConfig
+from cartblanche.config import AgentKind, Labeling, RelationshipMode, RunConfig
 from cartblanche.env.store import Catalog, TaskStore
 from cartblanche.eval.metrics import score, scorecard
 from cartblanche.llm import LLM, QuotaExhausted
@@ -34,7 +34,7 @@ LLMFactory = Callable[[RunConfig, Path], LLM]
 def not_built_yet(config: RunConfig) -> list[str]:
     """Components switched on in the config that later steps will build."""
     parts = {
-        "personalization": config.personalization != Personalization.NONE,
+        #"personalization (profile)": config.personalization == Personalization.PROFILE,
         "relationship": config.relationship != RelationshipMode.NONE,
         "extractor": config.extractor,
         "labeling": config.labeling != Labeling.NONE,

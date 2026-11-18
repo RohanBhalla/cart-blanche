@@ -2,8 +2,11 @@
 
 E1 (generic) gets the shopping tools only: no user history, no defenses.
 E2 adds the Intent Parser's Structured Requirements to the request.
-Later steps (history, relationship check, defenses, clarifying question)
-switch on through the same RunConfig.
+E3 and E3c add the shopper's past purchases to the first message: only the
+ones closest to the request (E3), or all of them (E3c). History never comes
+through a tool, so the variants differ only in what the model is shown.
+Later steps (relationship check, defenses, clarifying question) switch on
+through the same RunConfig.
 
 The loop: the model calls tools until it replies with a JSON decision, or
 max_steps runs out. If it skips and the task has a user override ("buy it
@@ -17,12 +20,14 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
+from cartblanche.agent.history import history_block, relevant_history, summarize_profile
 from cartblanche.agent.intent import parse_intent, parse_json
-from cartblanche.config import Personalization, RunConfig
+from cartblanche.config import Personalization, RelationshipMode, RunConfig
 from cartblanche.env.store import TaskStore
 from cartblanche.env.tools import TOOL_SPECS, dispatch
 from cartblanche.llm import LLM
-from cartblanche.schemas import Action, AgentResult, Task
+from cartblanche.schemas import Action, AgentResult, HistoryItem, Task
+
 
 HISTORY_TOOLS = {"get_history", "check_owned"}
 
@@ -39,22 +44,62 @@ When you have decided, reply with only this JSON object and nothing else:
 {"action": "BUY" | "ALTERNATIVE" | "SKIP", "pick": "<product id, or null for SKIP>",
  "reasons": "<one or two sentences>", "evidence_ids": ["..."]}"""
 
-HISTORY_NOTE = """
-The shopper's user ID is {user_id}. Use get_history and check_owned to see what they already bought and how they rated it."""
+HISTORY_INTRO = """The shopper's past purchases ({which}), with their ratings and reviews.
+Use them to judge what suits this shopper: what they liked, what went wrong, and which brands they trust."""
+
+PROFILE_INTRO = """A short profile of the shopper, written from their past purchases and reviews.
+Use it to judge what suits this shopper: what they liked, what went wrong, and which brands they trust."""
+
+HISTORY_TOOLS_NOTE = """
+The shopper's user ID is {user_id}. You can also use get_history and check_owned to see what they already bought."""
 
 
 def tools_for(config: RunConfig) -> list[dict]:
-    if config.personalization == Personalization.NONE:
-        return [t for t in TOOL_SPECS if t["function"]["name"] not in HISTORY_TOOLS]
-    return TOOL_SPECS
+    """The store tools the model may call.
+
+    History reaches E3, E3b and E3c through the first message, never through a tool, so those
+    variants differ only in what the model is shown. Versions that check what the shopper already
+    owns (E4 and later) also get the history tools."""
+    if config.relationship != RelationshipMode.NONE:
+        return TOOL_SPECS
+    return [t for t in TOOL_SPECS if t["function"]["name"] not in HISTORY_TOOLS]
 
 
-def _first_message(task: Task, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
+def system_for(task: Task, config: RunConfig) -> str:
+    if config.relationship != RelationshipMode.NONE:
+        return SYSTEM + HISTORY_TOOLS_NOTE.format(user_id=task.user_id)
+    return SYSTEM
+
+def _past_purchases(task: Task, store: TaskStore) -> list[HistoryItem]:
+    history = store.get_history(task.user_id)
+    return [HistoryItem(**h) for h in history] if isinstance(history, list) else []
+
+def _history_section(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
+    history = _past_purchases(task, store)
+    mode = config.personalization
+    record = {"mode": mode, "total": len(history)}
+    if mode == Personalization.RAG:
+        shown = relevant_history(task.request, history)
+        text = f"{HISTORY_INTRO.format(which='the ones closest to this request')}\n{history_block(shown)}"
+        record["shown"] = len(shown)
+    elif mode == Personalization.FULL:
+        text = f"{HISTORY_INTRO.format(which='all of them')}\n{history_block(history)}"
+        record["shown"] = len(history)
+    elif mode == Personalization.PROFILE:
+        text = f"{PROFILE_INTRO}\n{summarize_profile(history, llm, task.task_id)}"
+    else:
+        raise NotImplementedError(f"personalization {mode} is not built yet")
+    trace.append({"history": record})
+    return text
+
+def _first_message(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
     message = f"Request: {task.request}"
     if config.intent_parser:
         requirements = parse_intent(task.request, llm, tag=task.task_id)
         trace.append({"intent": requirements.model_dump()})
         message += f"\nStructured requirements: {requirements.model_dump_json()}"
+    if config.personalization != Personalization.NONE:
+        message += f"\n\n{_history_section(task, store, config, llm, trace)}"
     return message
 
 
@@ -77,10 +122,7 @@ def _decision(task: Task, store: TaskStore, config: RunConfig, content: str | No
 def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> AgentResult:
     before = replace(llm.usage)
     trace: list[dict] = []
-    system = SYSTEM
-    if config.personalization != Personalization.NONE:
-        system += HISTORY_NOTE.format(user_id=task.user_id)
-    messages: list[dict] = [{"role": "system", "content": system}]
+    messages: list[dict] = [{"role": "system", "content": system_for(task, config)}]
 
     def finish(result: AgentResult) -> AgentResult:
         used = llm.usage
@@ -94,7 +136,7 @@ def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> 
         return finish(AgentResult(task_id=task.task_id, config_id=config.config_id, action=Action.SKIP, error=error))
 
     try:
-        messages.append({"role": "user", "content": _first_message(task, config, llm, trace)})
+        messages.append({"role": "user", "content": _first_message(task, store, config, llm, trace)})
     except ValueError as e:
         return failed(f"intent parser: {e}")
 

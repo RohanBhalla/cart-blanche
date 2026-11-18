@@ -46,6 +46,6 @@ def test_crashing_agent_becomes_invalid_result(tmp_path, monkeypatch):
 
 def test_configs_with_unbuilt_components_fail_fast(tmp_path):
     catalog, tasks = load_fake_store()
-    e3 = load_config(Path(__file__).parent.parent / "configs" / "e3_rag.yaml")
-    with pytest.raises(NotImplementedError, match="personalization"):
-        run(e3, catalog, tasks, tmp_path)
+    e4 = load_config(Path(__file__).parent.parent / "configs" / "e4_rule.yaml")
+    with pytest.raises(NotImplementedError, match="relationship"):
+        run(e4, catalog, tasks, tmp_path)
