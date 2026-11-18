@@ -10,10 +10,10 @@ from cartblanche.schemas import HistoryItem
 REASONS = ("reaction", "quality", "scent or shade", "other")
 
 TAG_PROMPT = """You label past purchases of a beauty shopper. For each numbered purchase, pick the main reason behind the rating, from what the review says:
-- reaction: irritation, breakout, rash, allergy, a bad feel on skin, scalp or hair
+- reaction: only a BAD reaction: irritation, breakout, rash, allergy, stinging, a bad feel on skin, scalp or hair. If the review only praises the product for being gentle or not irritating, use other
 - quality: how well it works or how well it is made (effective, weak, broke, leaked, ran out fast)
 - scent or shade: the smell, the color or the shade match
-- other: price, shipping, packaging, or no clear reason in the review
+- other: price, shipping, packaging, praise for being gentle or not irritating, or no clear reason in the review
 Reply with only this JSON object, with one label per purchase, in the same order:
 {"reasons": ["reaction" | "quality" | "scent or shade" | "other", ...]}"""
 
