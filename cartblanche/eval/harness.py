@@ -9,7 +9,8 @@ Output, under runs/<config_id>/:
 
 Runs resume: tasks that already have a valid result in results.jsonl are
 skipped, and tasks that errored are retried. If a daily quota runs out, the
-run stops with QuotaExhausted; run it again later to continue.
+run stops with QuotaExhausted; run it again later to continue. Scores and the
+scorecard always cover the tasks finished so far, even after a stop.
 """
 
 from __future__ import annotations
@@ -97,16 +98,18 @@ def run(
     results_path.write_text("".join(r.model_dump_json() + "\n" for r in done.values()))  # drop errored lines
 
     llm = llm_factory(config, run_dir)
-    for task in tasks:
-        if task.task_id in done:
-            continue
-        result = run_task(agent, task, TaskStore(catalog, task), config, llm)
-        done[task.task_id] = result
-        with results_path.open("a") as f:
-            f.write(result.model_dump_json() + "\n")
-
-    scores = [score(t, done[t.task_id], catalog, TaskStore(catalog, t).injected_ids) for t in tasks]
-    card = scorecard(scores)
-    (run_dir / "scores.jsonl").write_text("".join(s.model_dump_json() + "\n" for s in scores))
-    (run_dir / "scorecard.json").write_text(json.dumps(card, indent=2))
+    try:
+        for task in tasks:
+            if task.task_id in done:
+                continue
+            result = run_task(agent, task, TaskStore(catalog, task), config, llm)
+            done[task.task_id] = result
+            with results_path.open("a") as f:
+                f.write(result.model_dump_json() + "\n")
+    finally:  # also when a quota stops the run: score what finished, so it can be compared
+        finished = [t for t in tasks if t.task_id in done]
+        scores = [score(t, done[t.task_id], catalog, TaskStore(catalog, t).injected_ids) for t in finished]
+        card = scorecard(scores)
+        (run_dir / "scores.jsonl").write_text("".join(s.model_dump_json() + "\n" for s in scores))
+        (run_dir / "scorecard.json").write_text(json.dumps(card, indent=2))
     return card

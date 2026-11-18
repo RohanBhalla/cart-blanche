@@ -49,3 +49,24 @@ def test_configs_with_unbuilt_components_fail_fast(tmp_path):
     e4 = load_config(Path(__file__).parent.parent / "configs" / "e4_rule.yaml")
     with pytest.raises(NotImplementedError, match="relationship"):
         run(e4, catalog, tasks, tmp_path)
+
+
+def test_quota_stop_still_scores_finished_tasks(tmp_path, monkeypatch):
+    import cartblanche.eval.harness as harness
+    from cartblanche.llm import QuotaExhausted
+    from cartblanche.schemas import AgentResult
+
+    calls = []
+
+    def agent(task, store, config, llm):
+        calls.append(task.task_id)
+        if len(calls) == 3:
+            raise QuotaExhausted("per day")
+        return AgentResult(task_id=task.task_id, config_id=config.config_id, action="SKIP")
+
+    monkeypatch.setattr(harness, "get_agent", lambda config: agent)
+    catalog, tasks = load_fake_store()
+    with pytest.raises(QuotaExhausted):
+        run(RunConfig(config_id="Q"), catalog, tasks, tmp_path, llm_factory=lambda c, d: None)
+    card = json.loads((tmp_path / "Q" / "scorecard.json").read_text())
+    assert card["n_tasks"] == 2 and len((tmp_path / "Q" / "scores.jsonl").read_text().splitlines()) == 2
