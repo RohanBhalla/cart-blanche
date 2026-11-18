@@ -46,6 +46,7 @@ class RunConfig(BaseModel):
     max_steps: int = 12
     intent_parser: bool = False
     personalization: Personalization = Personalization.NONE
+    history_tags: bool = False  # label each past purchase with a reason (needs personalization)
     relationship: RelationshipMode = RelationshipMode.NONE
     extractor: bool = False
     labeling: Labeling = Labeling.NONE
@@ -67,6 +68,8 @@ class RunConfig(BaseModel):
         )
         if self.agent == AgentKind.RULES and uses_llm_parts:
             raise ValueError("the rules agent (E0) cannot use LLM components")
+        if self.history_tags and self.personalization == Personalization.NONE:
+            raise ValueError("history_tags needs personalization (there is no history to label)")
         return self
 
 

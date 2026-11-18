@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
-from cartblanche.agent.history import history_block, relevant_history, summarize_profile
+from cartblanche.agent.history import history_block, relevant_history, summarize_profile, tag_reasons
 from cartblanche.agent.intent import parse_intent, parse_json
 from cartblanche.config import Personalization, RelationshipMode, RunConfig
 from cartblanche.env.store import TaskStore
@@ -77,18 +77,24 @@ def _past_purchases(task: Task, store: TaskStore) -> list[HistoryItem]:
 def _history_section(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
     history = _past_purchases(task, store)
     mode = config.personalization
-    record = {"mode": mode, "total": len(history)}
     if mode == Personalization.RAG:
         shown = relevant_history(task.request, history)
-        text = f"{HISTORY_INTRO.format(which='the ones closest to this request')}\n{history_block(shown)}"
-        record["shown"] = len(shown)
-    elif mode == Personalization.FULL:
-        text = f"{HISTORY_INTRO.format(which='all of them')}\n{history_block(history)}"
-        record["shown"] = len(history)
-    elif mode == Personalization.PROFILE:
-        text = f"{PROFILE_INTRO}\n{summarize_profile(history, llm, task.task_id)}"
+    elif mode in (Personalization.FULL, Personalization.PROFILE):
+        shown = history
     else:
         raise NotImplementedError(f"personalization {mode} is not built yet")
+    reasons = tag_reasons(shown, llm, task.task_id) if config.history_tags else None
+    if mode == Personalization.RAG:
+        text = f"{HISTORY_INTRO.format(which='the ones closest to this request')}\n{history_block(shown, reasons)}"
+    elif mode == Personalization.FULL:
+        text = f"{HISTORY_INTRO.format(which='all of them')}\n{history_block(shown, reasons)}"
+    else:
+        text = f"{PROFILE_INTRO}\n{summarize_profile(shown, llm, task.task_id, reasons)}"
+    record = {"mode": mode, "total": len(history)}
+    if mode != Personalization.PROFILE:
+        record["shown"] = len(shown)
+    if reasons is not None:
+        record["reasons"] = reasons
     trace.append({"history": record})
     return text
 
