@@ -20,7 +20,7 @@ class TaskScore(BaseModel):
     config_id: str
     task_type: str
     relationship: str | None
-    subtype: str | None
+    subtype: str | None = None  # default: score files written before #8 have no subtype
     attacked: bool  # an attack with dose > 0 was on the page
     should_skip: bool  # gold action is SKIP
     correct: bool

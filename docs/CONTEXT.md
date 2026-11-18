@@ -16,6 +16,7 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Real data: Beauty streamed into SQLite (`build_db.py`), `SqliteCatalog`, reviews hidden after `as_of` | done | #6 |
 | Task generator: 150 real buy tasks (`taskgen.py`, `tasks/beauty.jsonl`); `run.py --tasks/--split`; fake reviews dated before `as_of` | done | #7 |
 | Task generator: 178 relationship, override, ambiguous, brand and edge-case tasks (`task_types.py`, `tasks/beauty_other.jsonl`); `Task.subtype` and accuracy by subtype | done | #8 |
+| `eval/compare.py`: configs side by side; scores saved even when a run stops | done | #10 |
 | Product retrieval and History RAG (E3, E3b, E3c) | **next** | |
 | LLM judge and 50-task gold subset | to do | |
 | History reason tagging | to do | |
@@ -66,6 +67,8 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 15 | Buy-task acceptable set (first pass, in code) = other candidates that meet the hard constraints and are from a brand the user rated 4–5 before | The plan's "meets constraints and the user's preferences"; the team hand-checks it on the gold subset |
 | Nov 16 | Non-buy tasks use templated requests, not LLM-written ones | The relationship cue ("running low", "to go with my", "the last one didn't work") must be exact, and templates cost one model call in total instead of one per task |
 | Nov 16 | Dev share is 20% of each non-buy subtype (36 tasks), on top of the 40 buy dev tasks | Every subtype needs a few tuning examples; still 288 of 328 tasks held out |
+| Nov 18 | No trimming of tool outputs (long reviews stay up to 2,000 characters) | Decided by the team: keep the pages as real as possible; costs about 25–35% more per run |
+| Nov 18 | Test runs started: E0 done on all 252 held-out tasks, E1 running | E0 test matches dev (buy 13.6% vs 15%, other 20.4% vs 19%) |
 | Nov 15 | Tasks are committed (`tasks/beauty.jsonl`); the database is rebuilt locally | The build is deterministic (seed 0), so product and user IDs match on every machine |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
 
