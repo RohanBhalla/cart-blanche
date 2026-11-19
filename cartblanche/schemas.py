@@ -139,6 +139,7 @@ class Task(BaseModel):
     acceptable: list[str] = Field(default_factory=list)
     constraints: Constraints = Field(default_factory=Constraints)
     relationship: Relationship | None = None
+    subtype: str | None = None  # finer kind, e.g. "restock", "brand_conflict", "nothing_fits"
     override: str | None = None  # user follow-up after a skip, e.g. "buy it anyway"
     hidden_profile: dict[str, Any] | None = None  # only the simulated user sees this
     attack: AttackSpec | None = None

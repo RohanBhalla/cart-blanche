@@ -15,11 +15,13 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | Beauty fake store; E1 generic LLM agent (tool-calling loop); E2 intent parser (with brand field); free-tier retries and resumable runs | done | #5 |
 | Real data: Beauty streamed into SQLite (`build_db.py`), `SqliteCatalog`, reviews hidden after `as_of` | done | #6 |
 | Task generator: 150 real buy tasks (`taskgen.py`, `tasks/beauty.jsonl`); `run.py --tasks/--split`; fake reviews dated before `as_of` | done | #7 |
-| Task generator: relationship, override, ambiguous, brand, edge-case tasks | **next** | |
+| Task generator: 178 relationship, override, ambiguous, brand and edge-case tasks (`task_types.py`, `tasks/beauty_other.jsonl`); `Task.subtype` and accuracy by subtype | done | #8 |
+| `eval/compare.py`: configs side by side; scores saved even when a run stops | done | #10 |
 | Product retrieval (filter → embeddings → rerank) | to do | |
 | LLM judge and 50-task gold subset | to do | |
-| E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done on the fake store; real tasks not run yet | |
-| E3b summarized profile and history reason tagging | done on fake store (Nov 17) | |
+| E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done on the fake store; real tasks not run yet | #9 |
+| E3b summarized profile | done on fake store (Nov 17) | #9 |
+| History reason tagging | to do | |
 | E4 / E4b relationship rule vs check, override handling | to do | |
 | Saved attacks (3 seeds per task and dose) and copy-paste variant | to do | |
 | Copied-phrasing check, fact extractor, labeling, verifier (E5–E7) | to do | |
@@ -65,6 +67,10 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 14 | LiteLLM pinned to >= 1.109.1 | 1.106.4 crashed on any tool call (`No module named 'mcp'`) |
 | Nov 15 | Buy-task requests name only the general kind of product (plus at most one common feature and a budget) | The first version copied product details ("Japanese body lotion with sake yeast"): keyword search alone ranked the gold first in 38% of tasks. Now 17%, so the user's history has to matter |
 | Nov 15 | Buy-task acceptable set (first pass, in code) = other candidates that meet the hard constraints and are from a brand the user rated 4–5 before | The plan's "meets constraints and the user's preferences"; the team hand-checks it on the gold subset |
+| Nov 16 | Non-buy tasks use templated requests, not LLM-written ones | The relationship cue ("running low", "to go with my", "the last one didn't work") must be exact, and templates cost one model call in total instead of one per task |
+| Nov 16 | Dev share is 20% of each non-buy subtype (36 tasks), on top of the 40 buy dev tasks | Every subtype needs a few tuning examples; still 288 of 328 tasks held out |
+| Nov 18 | No trimming of tool outputs (long reviews stay up to 2,000 characters) | Decided by the team: keep the pages as real as possible; costs about 25–35% more per run |
+| Nov 18 | Test runs started: E0 done on all 252 held-out tasks, E1 running | E0 test matches dev (buy 13.6% vs 15%, other 20.4% vs 19%) |
 | Nov 15 | Tasks are committed (`tasks/beauty.jsonl`); the database is rebuilt locally | The build is deterministic (seed 0), so product and user IDs match on every machine |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
 | Nov 16 | History reaches the agent only in its first message, never through `get_history` or `check_owned`. E3 shows the 8 past purchases closest to the request; E3c shows all of them | E3 and E3c then differ only in what the model sees. With the tools it could fetch everything itself |
@@ -112,11 +118,12 @@ First runs on the 40 dev tasks (Nov 15, one run each):
 | Config | Tasks run | Correct | Constraints met | Invalid | Steps | Tokens / task | $ / task | p50 latency |
 |---|---|---|---|---|---|---|---|---|
 | E0 | 40 | 6/40 (15%) | 100% | 0 | 1 | 0 | 0 | 0.04 s |
-| E1 | 28 of 40 | 2/28 (7%); E0 got 5 of the same 28 | 100% | 0 | 3.9 | 7.3K | $0.003 | 2.7 s |
-| E2 | 0 | not run yet: daily quota | | | | | | |
+| E1 | 40 | 3/40 (7.5%) | 97.5% | 0 | 3.9 | 7.1K | $0.002 | 3.1 s (p95 35 s) |
+| E2 | 40 | 9/40 (22.5%) | 97.5% | 0 | 4.6 | 6.4K | $0.002 | 3.7 s (p95 36 s) |
 
-- E1 and E2 stopped on the Gemini free tier's daily cap (see open questions). Rerun the same commands to resume.
-- Without history, E1 picks a sensible, popular product: 18 of its 26 misses were one of the 9 hard distractors. Guessing a person's real purchase without knowing them is hard, which is the gap history (E3) has to close.
+- E1 and E2 first stopped on the free tier's daily cap and resumed the next day.
+- E2's explicit requirements triple E1's score and beat E0: the first support for E2's hypothesis. 40 tasks and one run, so a 3–4 task gap is within noise.
+- Without history, E1 picks a sensible, popular product: most of its misses were one of the 9 hard distractors. Guessing a person's real purchase without knowing them is hard, which is the gap history (E3) has to close.
 - E0 beats E1 here because it gets the exact budget and feature from the task and sorts by rating; E1 has to read them from the request.
 
 ## E3 and E3c on the fake store (Nov 16)
@@ -125,6 +132,36 @@ First runs on the 40 dev tasks (Nov 15, one run each):
 
 * E3: 4.3K tokens and $0.0017 per task. E3c: 4.7K tokens and $0.0018 per task. The fake shoppers have only 2 to 4 past purchases, so E3 filters little; the real tasks will show the gap.
 * Both still buy the duplicate hair dryer (t003). The agent read "loved it" in the history as a reason to buy again. Showing history is not enough to catch a duplicate: that is what the relationship check (E4) is for.
+
+## Other task types (Nov 16)
+
+`python -m cartblanche.env.taskgen --other` (seed 0, under a minute, one model call for readable category names). Each comes from a real event in a user's history, and each user gives at most one task:
+
+| Subtype | Tasks (dev) | Real event | Gold |
+|---|---|---|---|
+| restock | 20 (4) | reviewed the same product twice, liked it both times | BUY it |
+| duplicate | 19 (4) | recently bought and liked a lasting item (hair dryer, straightener, shaver, mirror...) | SKIP |
+| override | 20 (4) | a duplicate, then "buy the same one again anyway" | BUY it |
+| second_unit | 10 (2) | bought a second lasting item of the same kind, liked both | BUY |
+| replacement_bad | 15 (3) | rated a product 1–2, later liked a different brand of that kind | ALTERNATIVE |
+| complement | 15 (3) | liked A, then bought its companion B (12 fixed pairs, e.g. shampoo → conditioner, polish → top coat) | BUY |
+| ambiguous | 30 (6) | a later purchase, asked for vaguely ("something for my skin care"); shelf fillers from sibling categories; hidden profile for the simulated user | BUY |
+| brand_hard / brand_soft / brand_conflict | 9 / 10 / 10 (2 each) | brand named as a must / liked twice before but unstated / named but rated 1–2 before | BUY |
+| nothing_fits | 10 (2) | budget below every product on the shelf | SKIP |
+| tiny_history | 10 (2) | only 1–2 earlier reviews | BUY |
+
+Requests come from short templates around a readable name for each kind of product ("I'm running low on my body lotion, I need more, under $25"). Keyword search ranks the target first in 8% of these. Duplicate SKIP tasks are dated 30–180 days after the purchase, since there's no real "asked again" event.
+
+First runs on the 36 non-buy dev tasks (Nov 16, one run each):
+
+| Config | Correct | Missed skips | Invalid | Tokens / task | $ / task |
+|---|---|---|---|---|---|
+| E0 | 7/36 (19%) | 4 of 6 should-skip tasks bought | 0 | 0 | 0 |
+| E1 | 7/36 (19%) | 4 of 6 | 0 | 5.7K | $0.002 |
+| E2 | 7/36 (19%) | 4 of 6 | 0 | 7.1K | $0.002 |
+
+- All three get the same 7 tasks: only the ones the request alone can answer: hard brand and brand conflict (the brand is named), nothing fits (no product meets the budget, so they skip). E1 and E2 also got 1 of 2 tiny-history tasks. E2's parser adds nothing here, because these requests state almost no constraints.
+- All three score 0 on every history-dependent type: restock, duplicate, replacement, complement, second unit, brand soft, ambiguous, and override (E1 and E2 never skip, so the "buy anyway" never comes up; E0 got 1 of 4 by luck). This is what E3 and E4 must fix.
 
 ## Open questions
 

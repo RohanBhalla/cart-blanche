@@ -31,6 +31,10 @@ python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.json
 | `cartblanche/eval/` | C · Evaluation | Harness (`run`), code-checked metrics and scorecard; next: judge |
 | `configs/` | shared | E0–E8 experiment configs |
 
+## Comparing configurations
+
+`python -m cartblanche.eval.compare` prints every config's scorecard side by side as Markdown tables, pooling all task sets under `runs/` for the chosen split (`--split dev|test|any`, default test). `--by type|relationship|subtype` adds an accuracy breakdown. Only tasks every config has finished are compared, so a run stopped by a quota doesn't skew the table (`--all` turns that off).
+
 ## Running on the free tier
 
 Runs resume: rerunning the same command skips tasks that already have a valid result and retries the ones that failed, so a run cut short by rate limits just continues. Rate limits and timeouts are retried with backoff; when the daily quota runs out, the run stops and tells you to rerun later. After changing a prompt or the code, pass `--fresh` so old results aren't reused.
@@ -39,7 +43,7 @@ Runs resume: rerunning the same command skips tasks that already have a valid re
 
 `python -m cartblanche.env.build_db` streams Amazon Reviews 2023 Beauty & Personal Care from Hugging Face (about 14 GB) and keeps only what the tasks need in `data/cartblanche.sqlite`; no raw files are saved. It samples 10,000 users with 8+ reviews and keeps their full histories, the 10 most helpful reviews of each product that has 5+ reviews, and those products' metadata. `--spot-check 20` compares 20 stored products with the source. `SqliteCatalog` reads it through the same interface as the fake store.
 
-`python -m cartblanche.env.taskgen --buy 150` then builds buy tasks from it into `tasks/beauty.jsonl` (committed): a user's later 4–5★ purchase is the gold, an LLM writes a general request with a budget, and the shelf mixes the gold with 9 hard distractors and same-category fillers.
+`python -m cartblanche.env.taskgen --buy 150` then builds buy tasks from it into `tasks/beauty.jsonl` (committed): a user's later 4–5★ purchase is the gold, an LLM writes a general request with a budget, and the shelf mixes the gold with 9 hard distractors and same-category fillers. `--other` builds the relationship, override, ambiguous, brand and edge-case tasks into `tasks/beauty_other.jsonl`, each from a real event in a user's history (`env/task_types.py`).
 
 ## How the store works
 
