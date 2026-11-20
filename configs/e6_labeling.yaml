@@ -2,6 +2,7 @@ config_id: E6
 description: E5 + untrusted-text labeling
 intent_parser: true
 personalization: rag
+personal_search: true
 relationship: check
 extractor: true
 labeling: spotlight

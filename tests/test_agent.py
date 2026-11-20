@@ -14,12 +14,19 @@ from cartblanche.llm import LLM
 from cartblanche.schemas import BrandStrength
 
 CONFIGS = Path(__file__).parent.parent / "configs"
-E1 = load_config(CONFIGS / "e1_generic.yaml")
-E2 = load_config(CONFIGS / "e2_intent.yaml")
-E3 = load_config(CONFIGS / "e3_rag.yaml")
-E3B = load_config(CONFIGS / "e3b_profile.yaml")
-E3C = load_config(CONFIGS / "e3c_full.yaml")
-E4 = load_config(CONFIGS / "e4_rule.yaml")
+
+
+def config(name, **changes):
+    """A config from configs/, optionally with some fields changed for one test."""
+    return load_config(CONFIGS / name).model_copy(update=changes)
+
+E1 = config("e1_generic.yaml")
+E2 = config("e2_intent.yaml")
+E3 = config("e3_rag.yaml")
+E3B = config("e3b_profile.yaml")
+E3C = config("e3c_full.yaml")
+E3T = config("e3_tags.yaml")
+E4 = config("e4_rule.yaml")
 
 
 def tool(name, **args):
@@ -249,3 +256,25 @@ def test_versions_before_e4_have_no_history_tools_and_no_user_id_note(fake):
     intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
     _, script = agent_run(fake, "t003", E3C, intent, decide("SKIP"))
     assert "check_owned" not in script.requests[1]["messages"][0]["content"]
+
+
+def test_e3t_labels_the_shown_purchases_and_shows_the_reasons(fake, monkeypatch):
+    import cartblanche.agent.llm_agent as llm_agent
+
+    monkeypatch.setattr(llm_agent, "relevant_history", lambda request, items, k=8: items)  # no embedding model here
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    tags = say('{"reasons": ["quality", "reaction"]}')
+    result, script = agent_run(fake, "t003", E3T, intent, tags, decide("SKIP"))
+    message = script.requests[2]["messages"][1]["content"]
+    assert "reason: quality" in message and "reason: reaction" in message
+    assert {"history": {"mode": "rag", "total": 2, "shown": 2, "reasons": ["quality", "reaction"]}} in result.trace
+
+
+def test_e3t_bad_tag_reply_falls_back_to_history_without_reasons(fake, monkeypatch):
+    import cartblanche.agent.llm_agent as llm_agent
+
+    monkeypatch.setattr(llm_agent, "relevant_history", lambda request, items, k=8: items)
+    intent = say('{"max_price": null, "min_rating": null, "brand": {"name": null, "strength": "none"}, "required_features": []}')
+    result, script = agent_run(fake, "t003", E3T, intent, say('{"reasons": ["quality"]}'), decide("SKIP"))
+    message = script.requests[2]["messages"][1]["content"]
+    assert result.error is None and "Breeze Ionic Hair Dryer" in message and "reason:" not in message

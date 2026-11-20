@@ -13,6 +13,7 @@ dependencies = [
     "litellm>=1.109.1",
     "python-dotenv>=1.0",
     "sentence-transformers>=3.0",
+    "numpy",
 ]
 
 [project.optional-dependencies]

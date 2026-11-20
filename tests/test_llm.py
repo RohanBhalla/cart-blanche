@@ -156,3 +156,44 @@ def test_min_gap_between_real_calls_only(tmp_path):
     llm.complete([{"role": "user", "content": "b"}])  # real call right after: waits
     llm.complete([{"role": "user", "content": "a"}])  # cached: no wait
     assert len(waits) == 1 and 3 < waits[0] <= 4
+
+
+class PaymentRequiredError(Exception):  # LiteLLM's name for a 402
+    pass
+
+
+class AuthenticationError(Exception):
+    pass
+
+
+def test_out_of_credits_or_bad_key_stops_the_run(tmp_path):
+    import pytest
+
+    from cartblanche.llm import QuotaExhausted
+
+    for error in (PaymentRequiredError("402 Your prepayment credits are depleted"), AuthenticationError("401 bad key")):
+        fake = Flaky(error)
+        llm = make(tmp_path, fake, sleep=lambda s: pytest.fail("should not wait"))
+        with pytest.raises(QuotaExhausted):
+            llm.complete([{"role": "user", "content": "hi"}])
+        assert fake.calls == 1
+
+
+def test_provider_failed_tells_provider_errors_from_agent_errors():
+    from cartblanche.llm import provider_failed
+
+    assert provider_failed(RateLimitError("429"))
+    assert not provider_failed(ValueError("bad decision"))
+
+
+def test_a_damaged_cache_file_is_a_miss_and_gets_rewritten(tmp_path):
+    fake = FakeCompletion()
+    llm = make(tmp_path, fake)
+    msgs = [{"role": "user", "content": "hi"}]
+    llm.complete(msgs)
+    (cache_file,) = (tmp_path / "cache").glob("*.json")
+    cache_file.write_text('{"choices": [')  # as if a run crashed mid-write
+    again = llm.complete(msgs)
+    assert not again.cached and fake.calls == 2
+    assert json.loads(cache_file.read_text())["choices"]  # repaired
+    assert list((tmp_path / "cache").glob("*.tmp")) == []

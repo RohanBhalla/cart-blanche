@@ -34,7 +34,7 @@ Use Python 3.12 with pip and a venv, not uv or poetry.
 | `cartblanche/config.py` | shared | `RunConfig`, one YAML per run in `configs/` |
 | `cartblanche/llm.py` | shared | The only path to a model: LiteLLM, a disk cache, and token, cost and latency logging |
 | `cartblanche/env/` | A · Rohan | Store and `TaskStore`, the five agent tools, the attack injector, the fake store (`env/data/`), the real SQLite store (`db.py`, built by `build_db.py`) |
-| `cartblanche/agent/` | B · Megha | E0 rules baseline, E1 agent loop (`llm_agent.py`), E2 intent parser (`intent.py`); then retrieval and history RAG |
+| `cartblanche/agent/` | B · Megha | E0 rules baseline, E1 agent loop (`llm_agent.py`), E2 intent parser (`intent.py`), E3 history (`history.py`, `retrieval.py`), E4 / E4b relationship step (`relationship.py`) |
 | `cartblanche/defenses/` | C · Riddhi | Fact extractor, untrusted-text labeling, copied-phrasing check, verifier |
 | `cartblanche/eval/` | C · Riddhi | Harness, code-checked metrics, scorecard; then the judge |
 | `tasks/` | A · Rohan | Generated task files (committed), built by `env/taskgen.py` |

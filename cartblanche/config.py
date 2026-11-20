@@ -46,6 +46,8 @@ class RunConfig(BaseModel):
     max_steps: int = 12
     intent_parser: bool = False
     personalization: Personalization = Personalization.NONE
+    personal_search: bool = False  # rank search results for this shopper (agent/search.py; needs personalization)
+    history_tags: bool = False  # label each past purchase with a reason (needs personalization)
     relationship: RelationshipMode = RelationshipMode.NONE
     extractor: bool = False
     labeling: Labeling = Labeling.NONE
@@ -65,8 +67,12 @@ class RunConfig(BaseModel):
             or self.relationship != RelationshipMode.NONE
             or self.labeling != Labeling.NONE
         )
+        if self.personal_search and self.personalization == Personalization.NONE:
+            raise ValueError("personal_search needs personalization (it ranks by the shopper's history)")
         if self.agent == AgentKind.RULES and uses_llm_parts:
             raise ValueError("the rules agent (E0) cannot use LLM components")
+        if self.history_tags and self.personalization == Personalization.NONE:
+            raise ValueError("history_tags needs personalization (there is no history to label)")
         return self
 
 

@@ -46,9 +46,9 @@ def test_crashing_agent_becomes_invalid_result(tmp_path, monkeypatch):
 
 def test_configs_with_unbuilt_components_fail_fast(tmp_path):
     catalog, tasks = load_fake_store()
-    e4 = load_config(Path(__file__).parent.parent / "configs" / "e4_rule.yaml")
-    with pytest.raises(NotImplementedError, match="relationship"):
-        run(e4, catalog, tasks, tmp_path)
+    e5 = load_config(Path(__file__).parent.parent / "configs" / "e5_extractor.yaml")
+    with pytest.raises(NotImplementedError, match="extractor"):
+        run(e5, catalog, tasks, tmp_path)
 
 
 def test_quota_stop_still_scores_finished_tasks(tmp_path, monkeypatch):
@@ -70,3 +70,28 @@ def test_quota_stop_still_scores_finished_tasks(tmp_path, monkeypatch):
         run(RunConfig(config_id="Q"), catalog, tasks, tmp_path, llm_factory=lambda c, d: None)
     card = json.loads((tmp_path / "Q" / "scorecard.json").read_text())
     assert card["n_tasks"] == 2 and len((tmp_path / "Q" / "scores.jsonl").read_text().splitlines()) == 2
+
+
+def test_provider_failures_are_left_unfinished_and_retried(tmp_path, monkeypatch):
+    import cartblanche.eval.harness as harness
+    from cartblanche.schemas import AgentResult
+
+    class RateLimitError(Exception):  # the name LiteLLM uses
+        pass
+
+    failing = {"t002"}
+
+    def agent(task, store, config, llm):
+        if task.task_id in failing:
+            raise RateLimitError("429 after every retry")
+        return AgentResult(task_id=task.task_id, config_id=config.config_id, action="SKIP")
+
+    monkeypatch.setattr(harness, "get_agent", lambda config: agent)
+    catalog, tasks = load_fake_store()
+    card = run(RunConfig(config_id="P"), catalog, tasks[:3], tmp_path, llm_factory=lambda c, d: None)
+    assert card["n_tasks"] == 2 and card["invalid_rate"] == 0.0  # not scored as the agent's fault
+    assert "t002" not in (tmp_path / "P" / "results.jsonl").read_text()
+
+    failing.clear()  # the provider is back: the next run finishes it
+    card = run(RunConfig(config_id="P"), catalog, tasks[:3], tmp_path, llm_factory=lambda c, d: None)
+    assert card["n_tasks"] == 3

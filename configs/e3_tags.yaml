@@ -1,0 +1,6 @@
+config_id: E3t
+description: E3 + a reason label on each past purchase
+intent_parser: true
+personalization: rag
+personal_search: true
+history_tags: true

@@ -26,7 +26,7 @@ python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.json
 | `cartblanche/config.py` | shared | Run config: one YAML per run, component switches |
 | `cartblanche/llm.py` | shared | LiteLLM wrapper: disk cache, token / cost / latency logging |
 | `cartblanche/env/` | A · Environment & attacks | Store tools, beauty fake store + 11 tasks, attack injector |
-| `cartblanche/agent/` | B · Agent & personalization | E0 rules baseline, E1 tool-calling agent, E2 intent parser; next: retrieval, history RAG |
+| `cartblanche/agent/` | B · Agent & personalization | E0 rules baseline, E1 tool-calling agent, E2 intent parser, E3 history (RAG, profile, full), E4 / E4b relationship rule and check |
 | `cartblanche/defenses/` | C · Defenses | Fact extractor, untrusted-text labeling, verifier |
 | `cartblanche/eval/` | C · Evaluation | Harness (`run`), code-checked metrics and scorecard; next: judge |
 | `configs/` | shared | E0–E8 experiment configs |
