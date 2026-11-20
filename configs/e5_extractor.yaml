@@ -2,5 +2,6 @@ config_id: E5
 description: E4b + fact extractor
 intent_parser: true
 personalization: rag
+personal_search: true
 relationship: check
 extractor: true

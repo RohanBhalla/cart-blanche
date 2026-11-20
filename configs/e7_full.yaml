@@ -2,6 +2,7 @@ config_id: E7
 description: E6 + verifier (full single-turn system)
 intent_parser: true
 personalization: rag
+personal_search: true
 relationship: check
 extractor: true
 labeling: spotlight

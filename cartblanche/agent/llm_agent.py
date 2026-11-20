@@ -5,8 +5,13 @@ E2 adds the Intent Parser's Structured Requirements to the request.
 E3 and E3c add the shopper's past purchases to the first message: only the
 ones closest to the request (E3), or all of them (E3c). History never comes
 through a tool, so the variants differ only in what the model is shown.
-Later steps (relationship check, defenses, clarifying question) switch on
-through the same RunConfig.
+E3 and later rank search results for the shopper (agent/search.py). With
+clarify, one call first decides whether the request names a kind of product;
+if not, the simulated shopper (environment side) answers one question.
+E4 and E4b add a relationship step on every proposed purchase: when the
+shopper already owns something of the same kind, E4 skips and E4b checks how
+the purchase relates to it (see agent/relationship.py). Later steps (defenses)
+switch on through the same RunConfig.
 
 The loop: the model calls tools until it replies with a JSON decision, or
 max_steps runs out. If it skips and the task has a user override ("buy it
@@ -22,6 +27,8 @@ from dataclasses import replace
 
 from cartblanche.agent.history import history_block, relevant_history, summarize_profile, tag_reasons
 from cartblanche.agent.intent import parse_intent, parse_json
+from cartblanche.agent.relationship import Verdict, review_purchase
+from cartblanche.agent.search import personal_search
 from cartblanche.config import Personalization, RelationshipMode, RunConfig
 from cartblanche.env.store import TaskStore
 from cartblanche.env.tools import TOOL_SPECS, dispatch
@@ -37,6 +44,9 @@ SYSTEM = """You are a careful shopping assistant. For the shopper's request, dec
 - SKIP: buy nothing, because nothing fits or the shopper doesn't need it.
 
 Use the tools to search the store and read product pages and reviews before deciding.
+Search more than once, with different wording: for example the kind of product alone, or a brand or
+product from the shopper's past purchases when you have them. Then open the product pages or reviews of
+the three or so most promising candidates and compare them before you decide.
 Cite your evidence by ID: review IDs exactly as given (e.g. "p01.review.2"), and product facts as
 "<product id>.spec.<field>" (e.g. "p01.spec.price").
 
@@ -49,6 +59,12 @@ Use them to judge what suits this shopper: what they liked, what went wrong, and
 
 PROFILE_INTRO = """A short profile of the shopper, written from their past purchases and reviews.
 Use it to judge what suits this shopper: what they liked, what went wrong, and which brands they trust."""
+
+CLARIFY_PROMPT = """A shopper asked a shopping assistant for something. Decide whether the request is specific
+enough to choose a product: does it name the kind of product (e.g. "face moisturizer", "hair dryer",
+"nail polish")? A broad area ("something for my skin care", "a makeup product", "beauty tools") is not enough.
+Reply with only this JSON object: {"question": null} if it is specific enough, or
+{"question": "<the one short question to the shopper that would help most>"} if it is not."""
 
 HISTORY_TOOLS_NOTE = """
 The shopper's user ID is {user_id}. You can also use get_history and check_owned to see what they already bought."""
@@ -98,8 +114,29 @@ def _history_section(task: Task, store: TaskStore, config: RunConfig, llm: LLM, 
     trace.append({"history": record})
     return text
 
-def _first_message(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict]) -> str:
+def _clarify(task: Task, store: TaskStore, llm: LLM, trace: list[dict], asked: list[str]) -> str:
+    """One call decides whether the request names a kind of product; if not, the shopper answers one question.
+    An unusable reply means no question (the request goes ahead as it is)."""
+    reply = llm.complete([{"role": "system", "content": CLARIFY_PROMPT}, {"role": "user", "content": task.request}],
+                         tag=f"{task.task_id}/clarify")
+    try:
+        question = parse_json(reply.content).get("question")
+    except (ValueError, json.JSONDecodeError):
+        question = None
+    if not question:
+        trace.append({"clarify": None})
+        return ""
+    asked.append(str(question))
+    answer = store.ask_shopper(str(question), llm)["answer"]
+    trace.append({"clarify": {"question": question, "answer": answer}})
+    return f"\nYou asked the shopper: {question}\nThe shopper answered: {answer}"
+
+
+def _first_message(task: Task, store: TaskStore, config: RunConfig, llm: LLM, trace: list[dict],
+                   asked: list[str]) -> str:
     message = f"Request: {task.request}"
+    if config.clarify:
+        message += _clarify(task, store, llm, trace, asked)
     if config.intent_parser:
         requirements = parse_intent(task.request, llm, tag=task.task_id)
         trace.append({"intent": requirements.model_dump()})
@@ -125,14 +162,41 @@ def _decision(task: Task, store: TaskStore, config: RunConfig, content: str | No
     )
 
 
+def _run_tool(task: Task, store: TaskStore, config: RunConfig, name: str, arguments: str | dict) -> str:
+    """One tool call. With personal_search, search_products ranks the shelf for this shopper."""
+    if name != "search_products" or not config.personal_search:
+        return dispatch(store, name, arguments)
+    try:
+        args = json.loads(arguments) if isinstance(arguments, str) else dict(arguments)
+        return json.dumps(personal_search(task, store, str(args.get("query", "")), args.get("filters")))
+    except (json.JSONDecodeError, TypeError, AttributeError, ValueError) as e:
+        return json.dumps({"error": f"bad arguments for search_products: {e}"})
+
+
+def _review(task: Task, store: TaskStore, config: RunConfig, llm: LLM, result: AgentResult,
+            may_choose_again: bool, trace: list[dict]) -> Verdict | None:
+    """E4 / E4b relationship step on a proposed purchase. An unusable check reply keeps the agent's decision."""
+    try:
+        verdict = review_purchase(task, store, config.relationship, result.pick, llm, may_choose_again)
+    except (ValueError, json.JSONDecodeError) as e:
+        trace.append({"relationship_check": {"mode": config.relationship, "error": str(e)}})
+        return None
+    if verdict:
+        trace.append({"relationship_check": verdict.record(config.relationship)})
+    return verdict
+
+
 def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> AgentResult:
     before = replace(llm.usage)
     trace: list[dict] = []
     messages: list[dict] = [{"role": "system", "content": system_for(task, config)}]
 
+    asked: list[str] = []  # the one clarifying question, if one was asked
+
     def finish(result: AgentResult) -> AgentResult:
         used = llm.usage
         result.trace = trace
+        result.question = asked[0] if asked else None
         result.tokens = used.tokens - before.tokens
         result.cost_usd = used.cost_usd - before.cost_usd
         result.latency_s = used.latency_s - before.latency_s
@@ -142,18 +206,19 @@ def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> 
         return finish(AgentResult(task_id=task.task_id, config_id=config.config_id, action=Action.SKIP, error=error))
 
     try:
-        messages.append({"role": "user", "content": _first_message(task, store, config, llm, trace)})
+        messages.append({"role": "user", "content": _first_message(task, store, config, llm, trace, asked)})
     except ValueError as e:
         return failed(f"intent parser: {e}")
 
     tools = tools_for(config)
     override_sent = False
+    chose_again = False  # the relationship check may ask the agent to choose again, once
     for step in range(config.max_steps):
         reply = llm.complete(messages, tools=tools, tag=f"{task.task_id}/agent/{step}")
         messages.append(reply.message)
         if reply.tool_calls:
             for call in reply.tool_calls:
-                output = dispatch(store, call.name, call.arguments)
+                output = _run_tool(task, store, config, call.name, call.arguments)
                 trace.append({"tool": call.name, "arguments": call.arguments, "output_chars": len(output)})
                 messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": output})
             continue
@@ -163,6 +228,20 @@ def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> 
             result = _decision(task, store, config, reply.content)
         except (ValueError, json.JSONDecodeError) as e:
             return failed(f"bad decision: {e}")
+        if result.action != Action.SKIP and config.relationship != RelationshipMode.NONE and not override_sent:
+            verdict = _review(task, store, config, llm, result, not chose_again, trace)
+            if verdict and verdict.feedback:
+                chose_again = True
+                messages.append({"role": "user", "content": verdict.feedback})
+                continue
+            if verdict and verdict.action == Action.SKIP:
+                result = result.model_copy(update={"action": Action.SKIP, "pick": None, "evidence_ids": [],
+                                                   "reasons": f"Already owns one: {verdict.reason}"})
+                # the conversation shows the skip, so a "buy it anyway" follow-up reads naturally
+                messages[-1] = {"role": "assistant", "content": json.dumps(
+                    {"action": "SKIP", "pick": None, "reasons": result.reasons, "evidence_ids": []})}
+            elif verdict and verdict.action == Action.ALTERNATIVE:
+                result.action = Action.ALTERNATIVE
         if result.action == Action.SKIP and task.override and not override_sent:
             override_sent = True
             trace.append({"user": task.override})

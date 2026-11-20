@@ -200,3 +200,12 @@ def test_fake_reviews_dated_just_before_the_task(fake, tasks):
     s = store_for(fake, tasks, "t010")
     fakes = [r for r in s.get_reviews("p33") if r["id"] in s.injected_ids]
     assert {r["timestamp"] for r in fakes} == {"2026-09-28T00:00:00"}  # as_of 2026-10-01 minus 3 days
+
+
+def test_badly_typed_tool_arguments_come_back_as_an_error():
+    from cartblanche.env.tools import dispatch
+
+    catalog, tasks = load_fake_store()
+    store = TaskStore(catalog, tasks[0])
+    out = json.loads(dispatch(store, "search_products", {"query": "moisturizer", "filters": {"brand": {"name": "Dewlab"}}}))
+    assert "bad arguments" in out["error"]

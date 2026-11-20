@@ -10,7 +10,7 @@ CONFIGS = sorted((Path(__file__).parent.parent / "configs").glob("*.yaml"))
 
 def test_all_experiment_configs_load():
     ids = {load_config(p).config_id for p in CONFIGS}
-    assert ids == {"E0", "E1", "E2", "E3", "E3b", "E3c", "E3t", "E4", "E4b", "E5", "E6", "E7", "E8"}
+    assert ids == {"E0", "E1", "E2", "E3", "E3b", "E3c", "E3t", "E4", "E4b", "E4q", "E5", "E6", "E7", "E8"}
 
 
 def test_each_step_adds_on_previous():

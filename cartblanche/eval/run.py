@@ -44,7 +44,8 @@ def main() -> None:
     try:
         card = run(config, catalog, tasks, out, partial(default_llm, call_gap_s=args.call_gap), fresh=args.fresh)
     except QuotaExhausted as e:
-        sys.exit(f"Daily quota used up; finished tasks are saved. Run the same command later to resume.\n{e}")
+        sys.exit(f"Stopped: the daily quota or the prepaid credits ran out, or the API key was rejected. Finished tasks are saved;"
+                 f" fix it, then run the same command to resume.\n{e}")
     print(json.dumps(card, indent=2))
     print(f"\nWrote {out / config.config_id}/")
 

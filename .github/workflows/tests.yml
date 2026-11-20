@@ -1,0 +1,36 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # The embedding model the retrieval tests load (all-MiniLM-L6-v2, ~90 MB): download once, then reuse.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-minilm-v1
+
+      # CPU-only PyTorch: the default Linux wheel pulls ~2 GB of GPU libraries the tests never use.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev]"
+
+      # Tests never call a model API (they use scripted fakes), so no keys are needed.
+      - name: Run tests
+        run: pytest -q

@@ -91,6 +91,6 @@ def dispatch(store: TaskStore, name: str, arguments: str | dict[str, Any]) -> st
     try:
         args = json.loads(arguments) if isinstance(arguments, str) else dict(arguments)
         result = getattr(store, name)(**args)
-    except (json.JSONDecodeError, TypeError) as e:
+    except (json.JSONDecodeError, TypeError, AttributeError, ValueError) as e:  # e.g. a filter that isn't a string
         result = {"error": f"bad arguments for {name}: {e}"}
     return json.dumps(result)

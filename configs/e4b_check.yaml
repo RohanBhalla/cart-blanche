@@ -2,4 +2,5 @@ config_id: E4b
 description: Best E3 variant + relationship check
 intent_parser: true
 personalization: rag
+personal_search: true
 relationship: check

@@ -14,13 +14,19 @@ from cartblanche.llm import LLM
 from cartblanche.schemas import BrandStrength
 
 CONFIGS = Path(__file__).parent.parent / "configs"
-E1 = load_config(CONFIGS / "e1_generic.yaml")
-E2 = load_config(CONFIGS / "e2_intent.yaml")
-E3 = load_config(CONFIGS / "e3_rag.yaml")
-E3B = load_config(CONFIGS / "e3b_profile.yaml")
-E3C = load_config(CONFIGS / "e3c_full.yaml")
-E3T = load_config(CONFIGS / "e3_tags.yaml")
-E4 = load_config(CONFIGS / "e4_rule.yaml")
+
+
+def config(name, **changes):
+    """A config from configs/, optionally with some fields changed for one test."""
+    return load_config(CONFIGS / name).model_copy(update=changes)
+
+E1 = config("e1_generic.yaml")
+E2 = config("e2_intent.yaml")
+E3 = config("e3_rag.yaml")
+E3B = config("e3b_profile.yaml")
+E3C = config("e3c_full.yaml")
+E3T = config("e3_tags.yaml")
+E4 = config("e4_rule.yaml")
 
 
 def tool(name, **args):

@@ -1,0 +1,7 @@
+config_id: E4q
+description: E4b + one clarifying question to a simulated shopper (measures E8's question before E5-E7 exist)
+intent_parser: true
+personalization: rag
+personal_search: true
+relationship: check
+clarify: true

@@ -16,16 +16,17 @@ scorecard always cover the tasks finished so far, even after a stop.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 from cartblanche.agent.llm_agent import run_llm_agent
 from cartblanche.agent.rules import run_rules_agent
-from cartblanche.config import AgentKind, Labeling, RelationshipMode, RunConfig
+from cartblanche.config import AgentKind, Labeling, RunConfig
 from cartblanche.env.store import Catalog, TaskStore
 from cartblanche.eval.metrics import score, scorecard
-from cartblanche.llm import LLM, QuotaExhausted
+from cartblanche.llm import LLM, QuotaExhausted, provider_failed
 from cartblanche.schemas import Action, AgentResult, Task
 
 Agent = Callable[[Task, TaskStore, RunConfig, LLM], AgentResult]
@@ -36,11 +37,9 @@ def not_built_yet(config: RunConfig) -> list[str]:
     """Components switched on in the config that later steps will build."""
     parts = {
         #"personalization (profile)": config.personalization == Personalization.PROFILE,
-        "relationship": config.relationship != RelationshipMode.NONE,
         "extractor": config.extractor,
         "labeling": config.labeling != Labeling.NONE,
         "verifier": config.verifier,
-        "clarify": config.clarify,
     }
     return [name for name, on in parts.items() if on]
 
@@ -59,14 +58,19 @@ def default_llm(config: RunConfig, run_dir: Path, call_gap_s: float = 0.0) -> LL
                log_path=run_dir / "calls.jsonl", min_gap_s=call_gap_s)
 
 
-def run_task(agent: Agent, task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> AgentResult:
-    """Run one task. A crash becomes an invalid result instead of stopping the run."""
+def run_task(agent: Agent, task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> AgentResult | None:
+    """Run one task. A crash becomes an invalid result instead of stopping the run.
+
+    A provider failure that outlasted the retries returns None: the task stays unfinished, is not
+    scored, and the next run retries it (it says nothing about the agent)."""
     start = time.perf_counter()
     try:
         result = agent(task, store, config, llm)
     except QuotaExhausted:
         raise
     except Exception as e:
+        if provider_failed(e):
+            return None
         result = AgentResult(task_id=task.task_id, config_id=config.config_id, action=Action.SKIP, error=repr(e))
     if not result.latency_s:
         result.latency_s = time.perf_counter() - start
@@ -98,11 +102,15 @@ def run(
     results_path.write_text("".join(r.model_dump_json() + "\n" for r in done.values()))  # drop errored lines
 
     llm = llm_factory(config, run_dir)
+    unfinished: list[str] = []
     try:
         for task in tasks:
             if task.task_id in done:
                 continue
             result = run_task(agent, task, TaskStore(catalog, task), config, llm)
+            if result is None:
+                unfinished.append(task.task_id)
+                continue
             done[task.task_id] = result
             with results_path.open("a") as f:
                 f.write(result.model_dump_json() + "\n")
@@ -112,4 +120,7 @@ def run(
         card = scorecard(scores)
         (run_dir / "scores.jsonl").write_text("".join(s.model_dump_json() + "\n" for s in scores))
         (run_dir / "scorecard.json").write_text(json.dumps(card, indent=2))
+        if unfinished:
+            print(f"{len(unfinished)} tasks hit provider errors and were not scored; rerun to retry them: "
+                  f"{', '.join(unfinished[:10])}{' ...' if len(unfinished) > 10 else ''}", file=sys.stderr)
     return card

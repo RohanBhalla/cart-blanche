@@ -2,4 +2,5 @@ config_id: E4
 description: Best E3 variant + blunt rule (owns something similar -> skip)
 intent_parser: true
 personalization: rag
+personal_search: true
 relationship: rule

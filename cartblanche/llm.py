@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -31,8 +32,19 @@ CompletionFn = Callable[..., Any]
 RETRYABLE = {"RateLimitError", "Timeout", "APIConnectionError", "ServiceUnavailableError", "InternalServerError"}
 
 
+# Errors no retry fixes for any task: credits ran out, or the key is missing or rejected
+STOP_RUN = {"PaymentRequiredError", "AuthenticationError", "PermissionDeniedError"}
+
+
 class QuotaExhausted(RuntimeError):
-    """A daily quota ran out: retrying today won't help, so the run should stop."""
+    """A daily quota or the prepaid credits ran out, or the key was rejected: the run should stop."""
+
+
+def provider_failed(error: Exception) -> bool:
+    """A transient provider failure (rate limit, timeout, outage) that outlasted the retries.
+
+    Not the agent's fault, so the harness leaves the task unfinished for the next run instead of scoring it."""
+    return type(error).__name__ in RETRYABLE
 
 
 @dataclass
@@ -121,6 +133,24 @@ def _parse(data: dict[str, Any]) -> tuple[dict[str, Any], list[ToolCall], int, i
     return message, calls, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
 
 
+def _read_cache(path: Path | None) -> dict[str, Any] | None:
+    """A cached reply, or None. A damaged file (e.g. from a crash mid-write) counts as a miss."""
+    if path is None or not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def _write_cache(path: Path, data: dict[str, Any]) -> None:
+    """Write then rename, so runs in parallel never read a half-written reply."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, default=str))
+    os.replace(tmp, path)
+
+
 @dataclass
 class LLM:
     model: str
@@ -153,16 +183,13 @@ class LLM:
         key = self._key(request)
         cache_file = self.cache_dir / f"{key}.json" if self.cache_dir else None
 
-        if cache_file and cache_file.exists():
-            data = json.loads(cache_file.read_text())
-            cached = True
-        else:
+        data = _read_cache(cache_file)
+        cached = data is not None
+        if data is None:
             raw, latency = self._call(request)
             data = {**_to_dict(raw), "_cost_usd": self.cost_fn(raw), "_latency_s": latency}
-            cached = False
             if cache_file:
-                cache_file.parent.mkdir(parents=True, exist_ok=True)
-                cache_file.write_text(json.dumps(data, default=str))
+                _write_cache(cache_file, data)
         cost, latency = float(data.get("_cost_usd", 0.0)), float(data.get("_latency_s", 0.0))
 
         message, calls, p_tok, c_tok = _parse(data)
@@ -192,6 +219,8 @@ class LLM:
                 raw = self.completion_fn(**request)
                 return raw, time.perf_counter() - start
             except Exception as e:
+                if type(e).__name__ in STOP_RUN:
+                    raise QuotaExhausted(str(e)) from e
                 if type(e).__name__ not in RETRYABLE:
                     raise
                 if "perday" in str(e).lower().replace(" ", "").replace("_", ""):

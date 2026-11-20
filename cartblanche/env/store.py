@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from cartblanche.env import simulated_user
 from cartblanche.env.attacks import AttackedPage, apply_attack
 from cartblanche.schemas import HistoryItem, Product, Review, Task, User
 
@@ -148,6 +149,11 @@ class TaskStore:
         if history is None:
             return {"error": f"user {user_id} not found"}
         return [h.model_dump() for h in history]
+
+    def ask_shopper(self, question: str, llm: Any) -> dict:
+        """The shopper's answer to a clarifying question (from the hidden profile; see simulated_user.py)."""
+        return {"answer": simulated_user.answer(self.task.request, self.task.hidden_profile, question, llm,
+                                                self.task.task_id)}
 
     def check_owned(self, user_id: str, category: str) -> list[dict] | dict:
         history = self._visible_history(user_id)
