@@ -10,7 +10,7 @@ CONFIGS = sorted((Path(__file__).parent.parent / "configs").glob("*.yaml"))
 
 def test_all_experiment_configs_load():
     ids = {load_config(p).config_id for p in CONFIGS}
-    assert ids == {"E0", "E1", "E2", "E3", "E3b", "E3c", "E4", "E4b", "E5", "E6", "E7", "E8"}
+    assert ids == {"E0", "E1", "E2", "E3", "E3b", "E3c", "E3t", "E4", "E4b", "E5", "E6", "E7", "E8"}
 
 
 def test_each_step_adds_on_previous():
@@ -29,3 +29,8 @@ def test_rules_agent_rejects_llm_components():
 def test_agent_and_judge_are_different_families():
     c = RunConfig(config_id="x")
     assert c.agent_model.split("/")[0] != c.judge_model.split("/")[0]
+
+def test_history_tags_need_personalization():
+    with pytest.raises(ValidationError):
+        RunConfig(config_id="bad", history_tags=True)
+    assert RunConfig(config_id="ok", personalization="rag", history_tags=True).history_tags
