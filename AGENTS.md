@@ -18,6 +18,7 @@ pytest                      # must pass before every commit
 python -m cartblanche.env.build_db                    # real store: streams ~14 GB into data/cartblanche.sqlite (~15 min)
 python -m cartblanche.env.taskgen --buy 150 --call-gap 4   # regenerate tasks/beauty.jsonl (needs the store)
 python -m cartblanche.env.taskgen --other                   # relationship/override/ambiguous/brand/edge tasks -> tasks/beauty_other.jsonl
+python -m cartblanche.env.attackgen --call-gap 4            # attacked copies of the buy tasks -> tasks/beauty_attacked.jsonl
 python -m cartblanche.eval.run configs/e0_rules.yaml   # writes runs/E0/ (fake store)
 python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.jsonl --split dev --call-gap 4   # real tasks
 python -m cartblanche.eval.compare --split dev --by subtype   # all configs side by side, as Markdown tables

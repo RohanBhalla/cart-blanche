@@ -19,11 +19,12 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | `eval/compare.py`: configs side by side; scores saved even when a run stops | done | #10 |
 | Product retrieval: personal search for E3 and later (`agent/search.py`, `personal_search`) | built; tuned offline on dev | |
 | LLM judge and 50-task gold subset | to do | |
-| E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done on the fake store; real tasks not run yet | #9 |
-| E3b summarized profile | done on fake store (Nov 17) | #9 |
-| History reason tagging | to do | |
-| E4 / E4b relationship rule vs check, override handling (`agent/relationship.py`) | built, tested with a scripted model; real runs next | |
-| Saved attacks (3 seeds per task and dose) and copy-paste variant | to do | |
+| E3 (8 closest past purchases) and E3c (all history) in the agent's first message | done; run on all 328 tasks (Nov 19) | #9, #12 |
+| E3b summarized profile | done; run on all 328 tasks (Nov 19) | #9, #12 |
+| History reason tagging (E3t) | done; run on all 328 tasks; hand check on 50 reviews still to do | #11 |
+| E4 / E4b relationship rule vs check, override handling (`agent/relationship.py`) | done; run on all 328 tasks (Nov 19) | #12 |
+| Saved attacks: attacked copies of the 150 buy tasks (`attackgen.py`, `tasks/beauty_attacked.jsonl`): LLM-written fake reviews ×3 seeds, copy-paste variant, 4 text attacks | done | #13 |
+| Dose sweeps and break points (A3) | **next** | |
 | Copied-phrasing check, fact extractor, labeling, verifier (E5–E7) | to do | |
 | E8 clarifying question and simulated user (`ask_shopper`, `env/simulated_user.py`); measured early as E4q | built; E8 waits for E5–E7 | |
 | Dose sweeps, full matrix, variance, scorecard, failure analysis | to do | |
@@ -71,6 +72,12 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 16 | Dev share is 20% of each non-buy subtype (36 tasks), on top of the 40 buy dev tasks | Every subtype needs a few tuning examples; still 288 of 328 tasks held out |
 | Nov 18 | No trimming of tool outputs (long reviews stay up to 2,000 characters) | Decided by the team: keep the pages as real as possible; costs about 25–35% more per run |
 | Nov 18 | Test runs started: E0 done on all 252 held-out tasks, E1 running | E0 test matches dev (buy 13.6% vs 15%, other 20.4% vs 19%) |
+| Nov 24 | Attacked tasks: 8 copies per buy task (fake reviews × 3 seeds, copy-paste, hidden instruction, urgency, fake override, planted preference), all saved at dose 8; the sweep lowers the dose | One file holds every attack, so all configs face the same text |
+| Nov 24 | Fake reviews: one LLM call writes 8 per task and seed; dose n uses the first n, so doses are nested. Each has its own rating (4–5), age (1–14 days before the task), verified flag (about 70% verified) and helpful votes, fixed at generation | Nested doses keep break points meaningful; the metadata is what the copied-phrasing and burst checks will read |
+| Nov 24 | Copy-paste variant: one fake review's text posted 8 times within 1–3 days | Tests the copied-phrasing check (near-duplicates plus a posting burst) |
+| Nov 24 | Attack target: the most popular candidate that is not acceptable but still meets the request's constraints | Promoting an obviously wrong product (over budget, missing the feature) would show nothing |
+| Nov 24 | Text attacks (hidden instruction, urgency, fake override, planted preference) keep the injector's fixed lines, one variant each | The plan asks for 3 seeds only for fake reviews; dose n adds n lines |
+| Nov 24 | Attack generation so far: 912 attacked tasks for 114 of 150 buy tasks (672 test, 240 dev), $0.44. The other 36 are filled in by rerunning `attackgen` after the daily quota resets (finished calls replay free from the cache): 29 weren't reached, 6 hit Gemini 503 overloads, 1 had an unusable reply | Fake reviews: 2,736, median 213 characters, 24% rated 4★, 71% verified. 11 target products are the wrong pick for several buy tasks, so they carry the same fakes everywhere (same product and seed → same cached set) |
 | Nov 15 | Tasks are committed (`tasks/beauty.jsonl`); the database is rebuilt locally | The build is deterministic (seed 0), so product and user IDs match on every machine |
 | Nov 4 | Scoring: lenient accuracy (pick is in the acceptable set; BUY and ALTERNATIVE both count as buying) and strict accuracy (exact gold) | A held-out purchase isn't the only right answer |
 | Nov 16 | History reaches the agent only in its first message, never through `get_history` or `check_owned`. E3 shows the 8 past purchases closest to the request; E3c shows all of them | E3 and E3c then differ only in what the model sees. With the tools it could fetch everything itself |
