@@ -101,7 +101,8 @@ class TaskStore:
         """IDs of every injected item on this task's pages (for the evaluator only)."""
         if self.task.attack is None:
             return set()
-        return self.page(self.task.attack.target).injected_ids
+        attacked = [self.task.attack.target, *self.task.attack.params.get("others", {})]
+        return set().union(*(self.page(pid).injected_ids for pid in attacked))
 
     def _visible_history(self, user_id: str) -> list[HistoryItem] | None:
         user = self.catalog.users.get(user_id)

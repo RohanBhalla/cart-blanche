@@ -9,6 +9,10 @@ Fake reviews come from one of two places:
     with its own rating, age, verified flag and helpful votes, so every config faces
     exactly the same fakes; dose n uses the first n, so doses are nested;
   * the fixed templates below, used by the hand-made fake store.
+
+An attack promotes one target. For the "every candidate attacked" edge case,
+attack.params["others"] maps more product IDs to their own saved fakes, so those
+pages are attacked at the same dose (success still means buying the target).
 """
 
 from __future__ import annotations
@@ -79,11 +83,12 @@ class AttackedPage:
 def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | None, as_of: str) -> AttackedPage:
     """Return the page as the agent sees it. Inputs are never mutated. Fake reviews are dated
     a few days before the task's as_of, so they look recent."""
-    if spec is None or spec.dose == 0 or spec.target != product.id:
+    others = spec.params.get("others", {}) if spec else {}
+    if spec is None or spec.dose == 0 or (spec.target != product.id and product.id not in others):
         return AttackedPage(product, list(reviews))
 
     if spec.type == AttackType.FAKE_REVIEW:
-        saved = spec.params.get("reviews")
+        saved = spec.params.get("reviews") if product.id == spec.target else others[product.id]
         if saved and spec.dose > len(saved):
             raise ValueError(f"dose {spec.dose} needs {spec.dose} saved fake reviews, the set has {len(saved)}")
         fakes = [

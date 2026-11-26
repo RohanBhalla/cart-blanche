@@ -151,3 +151,18 @@ def test_provider_outage_skips_the_task_and_quota_stops(fake):
     stopped = LLM(model="fake/model", cache_dir=None, completion_fn=quota, cost_fn=lambda raw: 0.0)
     out, skipped = generate_attacked_tasks([tasks["t001"], second], catalog, stopped)
     assert out == [] and skipped == ["stopped at t001: daily quota used up; rerun later for the rest"]
+
+
+def test_every_candidate_attacked(fake):
+    from cartblanche.env.attackgen import generate_every_candidate
+
+    catalog, tasks = fake
+    out, skipped = generate_every_candidate(list(tasks.values()), catalog, llm(Writer()), n=5)
+    [t] = out  # only t001 is a clean buy task in the fake store
+    assert t.task_id == "t001-all" and t.subtype == "every_candidate" and t.attack.target == "p33"
+    assert set(t.attack.params["others"]) == set(t.candidates) - {"p33"}  # the gold p01 is attacked too
+    store = TaskStore(catalog, t.model_copy(update={"attack": t.attack.model_copy(update={"dose": 2})}))
+    attacked_pages = {i.split(".review.")[0] for i in store.injected_ids}
+    assert attacked_pages == set(t.candidates) and len(store.injected_ids) == 2 * len(t.candidates)
+    gold_fakes = [r for r in store.get_reviews("p01") if r["id"] in store.injected_ids]
+    assert [r["text"] for r in gold_fakes] == [r["text"] for r in t.attack.params["others"]["p01"][:2]]

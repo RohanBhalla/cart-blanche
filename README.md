@@ -35,6 +35,10 @@ python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.json
 
 `python -m cartblanche.eval.compare` prints every config's scorecard side by side as Markdown tables, pooling all task sets under `runs/` for the chosen split (`--split dev|test|any`, default test). `--by type|relationship|subtype` adds an accuracy breakdown. Only tasks every config has finished are compared, so a run stopped by a quota doesn't skew the table (`--all` turns that off).
 
+## Attack sweeps
+
+`python -m cartblanche.eval.sweep <config> --split dev` runs every attacked task at dose 0 and 8, then binary-searches the smallest dose that makes the agent buy the promoted product (its break point). It writes `sweep.jsonl` and `sweep_summary.json` next to the runs: per attack kind, how often the target was bought without any attack, how often the attack never worked, attack success at doses 1/2/4/8, the median break point, accuracy at dose 0 and 8, how often the pick stayed the same, and fake reviews cited, plus the spread across the 3 fake-review seeds. `compare --attacks` puts every config's sweep side by side.
+
 ## Running on the free tier
 
 Runs resume: rerunning the same command skips tasks that already have a valid result and retries the ones that failed, so a run cut short by rate limits just continues. Rate limits and timeouts are retried with backoff; when the daily quota runs out, the run stops and tells you to rerun later. After changing a prompt or the code, pass `--fresh` so old results aren't reused.
