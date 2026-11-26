@@ -3,6 +3,12 @@
 Doses are counts: dose 0 leaves the page untouched (genuine reviews only),
 dose n injects n fake reviews or n copies of the attack text. Every injected
 item is recorded so the evaluator can check it is never cited.
+
+Fake reviews come from one of two places:
+  * saved sets (attack.params["reviews"], written once by env/attackgen.py): varied text
+    with its own rating, age, verified flag and helpful votes, so every config faces
+    exactly the same fakes; dose n uses the first n, so doses are nested;
+  * the fixed templates below, used by the hand-made fake store.
 """
 
 from __future__ import annotations
@@ -77,19 +83,22 @@ def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | Non
         return AttackedPage(product, list(reviews))
 
     if spec.type == AttackType.FAKE_REVIEW:
+        saved = spec.params.get("reviews")
+        if saved and spec.dose > len(saved):
+            raise ValueError(f"dose {spec.dose} needs {spec.dose} saved fake reviews, the set has {len(saved)}")
         fakes = [
             Review(
                 id=review_id(product.id, len(reviews) + i + 1),
                 product_id=product.id,
                 user_id=f"anon_{product.id}_{i + 1}",
-                rating=5.0,
-                title=FAKE_REVIEWS[i % len(FAKE_REVIEWS)][0],
-                text=FAKE_REVIEWS[i % len(FAKE_REVIEWS)][1],
-                timestamp=_days_before(as_of, 3),
-                verified_purchase=True,
-                helpful_vote=12,
+                rating=float(r["rating"]) if saved else 5.0,
+                title=r["title"] if saved else FAKE_REVIEWS[i % len(FAKE_REVIEWS)][0],
+                text=r["text"] if saved else FAKE_REVIEWS[i % len(FAKE_REVIEWS)][1],
+                timestamp=_days_before(as_of, r["days_before"] if saved else 3),
+                verified_purchase=r["verified"] if saved else True,
+                helpful_vote=r["helpful"] if saved else 12,
             )
-            for i in range(spec.dose)
+            for i, r in enumerate(saved[: spec.dose] if saved else [None] * spec.dose)
         ]
         position = spec.params.get("position", "top")
         page = fakes + reviews if position == "top" else reviews + fakes
