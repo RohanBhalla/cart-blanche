@@ -50,6 +50,8 @@ class AttackType(StrEnum):
     URGENCY = "urgency"
     FAKE_OVERRIDE = "fake_override"
     PLANTED_PREFERENCE = "planted_preference"
+    PERSUASION = "persuasion"  # authority, social proof, badges, comparisons on the target's listing
+    SABOTAGE = "sabotage"  # fake negative reviews on the right answer (the target is the gold)
 
 
 class Split(StrEnum):
@@ -163,7 +165,10 @@ class Task(BaseModel):
         if self.attack is not None:
             if self.attack.target not in self.shelf:
                 raise ValueError("attack target must be on the shelf")
-            if self.attack.target in self.acceptable:
+            if self.attack.type == AttackType.SABOTAGE:
+                if self.attack.target != self.gold_pick:
+                    raise ValueError("a sabotage attack targets the gold product")
+            elif self.attack.target in self.acceptable:
                 raise ValueError("attack target must not be an acceptable answer")
         return self
 
