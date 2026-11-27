@@ -3,6 +3,7 @@
     python -m cartblanche.eval.compare                          # every test run under runs/
     python -m cartblanche.eval.compare runs/beauty/dev          # one task set and split
     python -m cartblanche.eval.compare --split dev --by subtype # accuracy per subtype too
+    python -m cartblanche.eval.compare --split dev --attacks    # robustness from the dose sweeps
 
 Scores are pooled per config across the run folders found (e.g. buy and other tasks
 together), then aggregated with the same scorecard() the harness uses. By default only
@@ -13,6 +14,7 @@ stopped on a quota) doesn't skew the table; --all compares whatever each config 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -58,7 +60,8 @@ def load_scores(runs: list[Path]) -> dict[str, list[TaskScore]]:
         for line in (run / "scores.jsonl").read_text().splitlines():
             if line.strip():
                 s = TaskScore.model_validate_json(line)
-                by_config.setdefault(s.config_id, []).append(s)
+                if "@" not in s.task_id:  # dose-sweep runs are compared with --attacks, not here
+                    by_config.setdefault(s.config_id, []).append(s)
     return by_config
 
 
@@ -91,11 +94,24 @@ def breakdown_table(cards: dict[str, dict], by: str, by_config: dict[str, list[T
     return "\n".join(lines)
 
 
+def attacks(paths: list[Path], split: str | None = "test") -> str:
+    """Robustness rows from every sweep_summary.json found (see eval/sweep.py)."""
+    from cartblanche.eval.sweep import robustness_table
+
+    found = sorted({p for root in paths for p in root.rglob("sweep_summary.json") if not split or split in p.parts})
+    if not found:
+        return "No dose sweeps found" + (f" for split '{split}'" if split else "") + "."
+    summaries = sorted((json.loads(p.read_text()) for p in found), key=lambda s: config_order(s["config_id"]))
+    return f"Sweeps: {', '.join(str(p.parent) for p in found)}\n\n{robustness_table(summaries)}"
+
+
 def compare(paths: list[Path], split: str | None = "test", by: str | None = None, all_tasks: bool = False) -> str:
     runs = find_runs(paths, split)
     if not runs:
         return f"No runs found under {', '.join(map(str, paths))}" + (f" for split '{split}'" if split else "") + "."
     by_config = load_scores(runs)
+    if not by_config:
+        return "Only dose-sweep runs found here; use --attacks to compare them."
     note = ""
     if not all_tasks and len(by_config) > 1:
         before = {c: len(s) for c, s in by_config.items()}
@@ -119,8 +135,10 @@ def main() -> None:
     parser.add_argument("--split", default="test", help="dev, test, or 'any' (default: test)")
     parser.add_argument("--by", choices=["type", "relationship", "subtype"], help="add an accuracy breakdown")
     parser.add_argument("--all", action="store_true", help="don't restrict to tasks every config has finished")
+    parser.add_argument("--attacks", action="store_true", help="show robustness from the dose sweeps instead")
     args = parser.parse_args()
-    print(compare(args.paths, None if args.split == "any" else args.split, args.by, args.all))
+    split = None if args.split == "any" else args.split
+    print(attacks(args.paths, split) if args.attacks else compare(args.paths, split, args.by, args.all))
 
 
 if __name__ == "__main__":

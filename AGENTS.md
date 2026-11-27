@@ -22,6 +22,8 @@ python -m cartblanche.env.attackgen --call-gap 4            # attacked copies of
 python -m cartblanche.eval.run configs/e0_rules.yaml   # writes runs/E0/ (fake store)
 python -m cartblanche.eval.run configs/e1_generic.yaml --tasks tasks/beauty.jsonl --split dev --call-gap 4   # real tasks
 python -m cartblanche.eval.compare --split dev --by subtype   # all configs side by side, as Markdown tables
+python -m cartblanche.eval.sweep configs/e1_generic.yaml --split dev --call-gap 4   # dose sweep: break points per attack
+python -m cartblanche.eval.compare --split dev --attacks      # robustness table from the sweeps
 python -m cartblanche.eval.run configs/e1_generic.yaml --call-gap 4   # real Gemini calls; resumable, --fresh to redo
 ```
 
