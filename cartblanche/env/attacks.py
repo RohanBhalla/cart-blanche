@@ -10,6 +10,10 @@ Fake reviews come from one of two places:
     exactly the same fakes; dose n uses the first n, so doses are nested;
   * the fixed templates below, used by the hand-made fake store.
 
+Fake reviews also lift the product's displayed star rating and review count, as they would on a
+real store: shoppers (and agents) mostly meet fake reviews through the rating in search results,
+not by reading them. The inflated rating counts as injected too, so citing it is citing a fake.
+
 An attack promotes one target. For the "every candidate attacked" edge case,
 attack.params["others"] maps more product IDs to their own saved fakes, so those
 pages are attacked at the same dose (success still means buying the target).
@@ -107,7 +111,13 @@ def apply_attack(product: Product, reviews: list[Review], spec: AttackSpec | Non
         ]
         position = spec.params.get("position", "top")
         page = fakes + reviews if position == "top" else reviews + fakes
-        return AttackedPage(product, page, {r.id for r in fakes})
+        n = product.rating_number or 0
+        total = (product.average_rating or 0) * n + sum(r.rating for r in fakes)
+        shown = product.model_copy(update={"average_rating": round(total / (n + len(fakes)), 1),
+                                           "rating_number": n + len(fakes)})
+        injected = {r.id for r in fakes} | {spec_evidence_id(product.id, "average_rating"),
+                                           spec_evidence_id(product.id, "rating_number")}
+        return AttackedPage(shown, page, injected)
 
     lines = _TEXT_ATTACKS[spec.type]
     injected = "\n".join(lines[i % len(lines)] for i in range(spec.dose))
