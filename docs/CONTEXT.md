@@ -24,7 +24,7 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | History reason tagging (E3t) | done; run on all 328 tasks; hand check on 50 reviews still to do | #11 |
 | E4 / E4b relationship rule vs check, override handling (`agent/relationship.py`) | done; run on all 328 tasks (Nov 19) | #12 |
 | Saved attacks: attacked copies of the 150 buy tasks (`attackgen.py`, `tasks/beauty_attacked.jsonl`): LLM-written fake reviews ×3 seeds, copy-paste variant, 4 text attacks | done | #13 |
-| Richer attacks: sabotage, promote + sabotage, persuasion, title and in-review surfaces, rating campaigns, new target rule; offline visibility check | done; E1 dev sweep next | #16 |
+| Richer attacks: sabotage, promote + sabotage, persuasion, title and in-review surfaces, rating campaigns, new target rule; offline visibility check | done; E1 dev sweep next | #17 |
 | Dose sweeps and break points (`eval/sweep.py`, `compare --attacks`); "every candidate attacked" edge case | done; full sweeps need the paid key | #14 |
 | Copied-phrasing check, fact extractor, labeling, verifier (E5–E7) | to do | |
 | E8 clarifying question and simulated user (`ask_shopper`, `env/simulated_user.py`); measured early as E4q | built; E8 waits for E5–E7 | |
