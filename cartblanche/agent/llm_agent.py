@@ -29,7 +29,9 @@ from cartblanche.agent.history import history_block, relevant_history, summarize
 from cartblanche.agent.intent import parse_intent, parse_json
 from cartblanche.agent.relationship import Verdict, review_purchase
 from cartblanche.agent.search import personal_search
-from cartblanche.config import Personalization, RelationshipMode, RunConfig
+from cartblanche.config import Labeling, Personalization, RelationshipMode, RunConfig
+from cartblanche.defenses.extractor import AGENT_NOTE, Extractor
+from cartblanche.defenses.labeling import label_product, label_reviews, rule_for
 from cartblanche.env.store import TaskStore
 from cartblanche.env.tools import TOOL_SPECS, dispatch
 from cartblanche.llm import LLM
@@ -92,9 +94,12 @@ def tools_for(config: RunConfig) -> list[dict]:
 
 
 def system_for(task: Task, config: RunConfig) -> str:
+    system = SYSTEM
     if config.relationship != RelationshipMode.NONE:
-        return SYSTEM + HISTORY_TOOLS_NOTE.format(user_id=task.user_id)
-    return SYSTEM
+        system += HISTORY_TOOLS_NOTE.format(user_id=task.user_id)
+    if config.extractor:
+        system += AGENT_NOTE
+    return system + rule_for(config.labeling)  # E6 spotlight rule: seller text is data, never instructions
 
 def _past_purchases(task: Task, store: TaskStore) -> list[HistoryItem]:
     history = store.get_history(task.user_id)
@@ -172,8 +177,25 @@ def _decision(task: Task, store: TaskStore, config: RunConfig, content: str | No
     )
 
 
-def _run_tool(task: Task, store: TaskStore, config: RunConfig, name: str, arguments: str | dict) -> str:
-    """One tool call. With personal_search, search_products ranks the shelf for this shopper."""
+PAGE_TOOLS = {"get_product", "get_reviews"}
+
+
+def _run_tool(task: Task, store: TaskStore, config: RunConfig, name: str, arguments: str | dict,
+              extractor: Extractor | None = None) -> str:
+    """One tool call. With personal_search, search_products ranks the shelf for this shopper.
+    With the extractor (E5), product pages and reviews come back as extracted facts; with labeling
+    (E6), their seller and reviewer text comes back wrapped in <untrusted> tags."""
+    if name in PAGE_TOOLS and (extractor or config.labeling != Labeling.NONE):
+        try:
+            args = json.loads(arguments) if isinstance(arguments, str) else dict(arguments)
+            product_id = str(args["product_id"])
+        except (json.JSONDecodeError, TypeError, AttributeError, ValueError, KeyError) as e:
+            return json.dumps({"error": f"bad arguments for {name}: {e}"})
+        if extractor:
+            return json.dumps(extractor.product(product_id) if name == "get_product" else extractor.reviews(product_id))
+        raw = json.loads(dispatch(store, name, {"product_id": product_id}))
+        label = label_product if name == "get_product" else label_reviews
+        return json.dumps(label(raw, config.labeling))
     if name != "search_products" or not config.personal_search:
         return dispatch(store, name, arguments)
     try:
@@ -221,6 +243,7 @@ def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> 
         return failed(f"intent parser: {e}")
 
     tools = tools_for(config)
+    extractor = Extractor(task, store, config, llm, trace) if config.extractor else None
     override_sent = False
     chose_again = False  # the relationship check may ask the agent to choose again, once
     for step in range(config.max_steps):
@@ -228,7 +251,7 @@ def run_llm_agent(task: Task, store: TaskStore, config: RunConfig, llm: LLM) -> 
         messages.append(reply.message)
         if reply.tool_calls:
             for call in reply.tool_calls:
-                output = _run_tool(task, store, config, call.name, call.arguments)
+                output = _run_tool(task, store, config, call.name, call.arguments, extractor)
                 trace.append({"tool": call.name, "arguments": call.arguments, "output_chars": len(output),
                               "products": shown_products(output)})
                 messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": output})

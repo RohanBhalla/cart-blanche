@@ -23,7 +23,7 @@ from pathlib import Path
 
 from cartblanche.agent.llm_agent import run_llm_agent
 from cartblanche.agent.rules import run_rules_agent
-from cartblanche.config import AgentKind, Labeling, RunConfig
+from cartblanche.config import AgentKind, RunConfig
 from cartblanche.env.store import Catalog, TaskStore
 from cartblanche.eval.metrics import score, scorecard
 from cartblanche.llm import LLM, QuotaExhausted, provider_failed
@@ -37,8 +37,6 @@ def not_built_yet(config: RunConfig) -> list[str]:
     """Components switched on in the config that later steps will build."""
     parts = {
         #"personalization (profile)": config.personalization == Personalization.PROFILE,
-        "extractor": config.extractor,
-        "labeling": config.labeling != Labeling.NONE,
         "verifier": config.verifier,
     }
     return [name for name, on in parts.items() if on]

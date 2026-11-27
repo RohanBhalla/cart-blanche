@@ -46,9 +46,9 @@ def test_crashing_agent_becomes_invalid_result(tmp_path, monkeypatch):
 
 def test_configs_with_unbuilt_components_fail_fast(tmp_path):
     catalog, tasks = load_fake_store()
-    e5 = load_config(Path(__file__).parent.parent / "configs" / "e5_extractor.yaml")
-    with pytest.raises(NotImplementedError, match="extractor"):
-        run(e5, catalog, tasks, tmp_path)
+    e7 = load_config(Path(__file__).parent.parent / "configs" / "e7_full.yaml")
+    with pytest.raises(NotImplementedError, match="verifier"):
+        run(e7, catalog, tasks, tmp_path)
 
 
 def test_quota_stop_still_scores_finished_tasks(tmp_path, monkeypatch):
