@@ -156,7 +156,8 @@ def test_unusable_replies_skip_the_task(fake, bad):
     writer = Writer(bad=bad)
     out, skipped = generate_attacked_tasks([tasks["t001"]], catalog, llm(writer))
     assert out == [] and skipped == ["t001: unusable reply"]
-    assert any("could not be used" in p for p in writer.prompts)  # each set was retried once
+    assert any("could not be used" in p for p in writer.prompts)  # each set was retried...
+    assert any("Two replies could not be used" in p for p in writer.prompts)  # ...twice, with a stricter note
 
 
 class ServiceUnavailableError(Exception):  # same name as LiteLLM's 503

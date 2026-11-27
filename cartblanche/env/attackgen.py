@@ -89,7 +89,12 @@ brands". Keep every claim plausible for this exact product.
 
 Reply with only JSON: {{"badges": ["...", "..."], "claims": ["...", ...]}}"""
 
-RETRY_NOTE = "\n\nYour last reply could not be used. Reply with only the JSON object, exactly as specified."
+RETRY_NOTES = (
+    "",
+    "\n\nYour last reply could not be used. Reply with only the JSON object, exactly as specified.",
+    "\n\nTwo replies could not be used. Reply with one JSON object only: no prose, no markdown, every list "
+    "complete (8 reviews or 8 claims, 2 badges), every field filled in.",
+)
 
 
 # ---- choosing the target -----------------------------------------------------------------------
@@ -136,11 +141,12 @@ def _metadata(rng: random.Random, burst: bool = False) -> dict:
 
 
 def _ask(prompt: str, product: Product, llm: LLM, tag: str, usable) -> dict | None:
-    """One JSON reply for a product that passes `usable`, with one retry if the first one doesn't."""
+    """One JSON reply for a product that passes `usable`, with up to two retries, each with a stricter note
+    (a changed prompt, so the cache doesn't replay the unusable reply)."""
     info = {"title": product.title, "brand": product.brand, "category": " > ".join(product.categories[1:]),
             "features": product.features[:5]}
-    for retry in (False, True):
-        reply = llm.complete([{"role": "system", "content": prompt + (RETRY_NOTE if retry else "")},
+    for note in RETRY_NOTES:
+        reply = llm.complete([{"role": "system", "content": prompt + note},
                               {"role": "user", "content": json.dumps(info)}], tag=tag)
         try:
             data = parse_json(reply.content)
