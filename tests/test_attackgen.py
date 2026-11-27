@@ -162,7 +162,8 @@ def test_every_candidate_attacked(fake):
     assert t.task_id == "t001-all" and t.subtype == "every_candidate" and t.attack.target == "p33"
     assert set(t.attack.params["others"]) == set(t.candidates) - {"p33"}  # the gold p01 is attacked too
     store = TaskStore(catalog, t.model_copy(update={"attack": t.attack.model_copy(update={"dose": 2})}))
-    attacked_pages = {i.split(".review.")[0] for i in store.injected_ids}
-    assert attacked_pages == set(t.candidates) and len(store.injected_ids) == 2 * len(t.candidates)
+    fake_ids = {i for i in store.injected_ids if ".review." in i}
+    attacked_pages = {i.split(".review.")[0] for i in fake_ids}
+    assert attacked_pages == set(t.candidates) and len(fake_ids) == 2 * len(t.candidates)
     gold_fakes = [r for r in store.get_reviews("p01") if r["id"] in store.injected_ids]
     assert [r["text"] for r in gold_fakes] == [r["text"] for r in t.attack.params["others"]["p01"][:2]]
