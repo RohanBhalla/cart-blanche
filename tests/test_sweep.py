@@ -111,7 +111,7 @@ def test_robustness_table(tmp_path, monkeypatch, attacked):
     monkeypatch.setattr(harness, "get_agent", lambda config: gullible(3, []))
     summary = sweep(RunConfig(config_id="G"), catalog, tasks, tmp_path, llm_factory=lambda c, d: None)
     table = robustness_table([summary])
-    assert "| G | all | 8 | 0% | 0% | 0% | 0% | 100% | 100% | 4 |" in table
+    assert "| G | all | 8 | 0% | 0% | 0% | 0% | 100% | 100% | 0% | – | 4 |" in table  # the scripted agent opens nothing
     assert "| G | copy_paste | 1 |" in table
 
 
@@ -124,3 +124,19 @@ def test_compare_attacks_and_clean_tables_stay_apart(tmp_path, monkeypatch, atta
     assert "| E1 | all | 8 |" in attacks([tmp_path], split="dev")
     assert "use --attacks" in compare([tmp_path], split="dev")  # sweep runs never mix into the clean table
     assert "No dose sweeps" in attacks([tmp_path], split="test")
+
+
+def test_saw_attack():
+    from cartblanche.eval.sweep import saw_attack
+    catalog, tasks = load_fake_store()
+    t010 = next(t for t in tasks if t.task_id == "t010")  # fake reviews on p33
+    def result(*steps):
+        return AgentResult(task_id="x", config_id="x", action="BUY", pick="p01", trace=list(steps))
+    assert saw_attack(t010, result({"tool": "search_products", "arguments": "{}", "products": ["p01", "p33"]}))
+    assert saw_attack(t010, result({"tool": "get_reviews", "arguments": '{"product_id": "p33"}', "products": []}))
+    assert saw_attack(t010, result({"tool": "search_products", "hits": ["p33"]}))  # E0's trace
+    assert not saw_attack(t010, result({"tool": "search_products", "arguments": "{}", "products": ["p01", "p04"]}))
+    text = t010.model_copy(update={"attack": t010.attack.model_copy(update={"type": "hidden_instruction"})})
+    assert not saw_attack(text, result({"tool": "search_products", "arguments": "{}", "products": ["p33"]}))
+    assert saw_attack(text, result({"tool": "get_product", "arguments": '{"product_id": "p33"}', "products": ["p33"]}))
+    assert saw_attack(t010, None) is None
