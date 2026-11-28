@@ -2,6 +2,7 @@
 
     python -m cartblanche.eval.sweep configs/e1_generic.yaml --split dev --call-gap 4
     python -m cartblanche.eval.sweep configs/e1_generic.yaml --split dev --all-doses   # check the shortcut
+    python -m cartblanche.eval.sweep configs/e4b_check.yaml --split dev --one-seed     # budget plan: one set each
 
 Each attacked task (tasks/beauty_attacked.jsonl) runs at dose 0 (the clean page) and dose 8 (the most).
 If the agent buys the target already at dose 0, the attack isn't needed (break point 0). If it doesn't
@@ -68,6 +69,11 @@ def saw_attack(task: Task, result: AgentResult | None) -> bool | None:
         if not anywhere and step.get("tool") == tool and opened == attack.target:
             return True
     return False
+
+
+def one_seed(tasks: list[Task]) -> list[Task]:
+    """Drop seeds 1 and 2 of the fake-review and persuasion sets (the budget plan): 14 attacks per buy task."""
+    return [t for t in tasks if t.attack is None or t.attack.params.get("seed") in (None, 0)]
 
 
 def bought_target(result: AgentResult, task: Task) -> bool:
@@ -225,12 +231,16 @@ def main() -> None:
     parser.add_argument("--kind", help="only this attack kind, e.g. fake_review")
     parser.add_argument("--limit", type=int, help="only the first N attacked tasks (a quick check)")
     parser.add_argument("--all-doses", action="store_true", help="run every dose (checks the binary-search shortcut)")
+    parser.add_argument("--one-seed", action="store_true",
+                        help="only seed 0 of the fake-review and persuasion sets (the budget plan; E7 uses all three)")
     parser.add_argument("--out", type=Path, default=Path("runs"))
     parser.add_argument("--call-gap", type=float, default=0.0)
     args = parser.parse_args()
 
     config = load_config(args.config)
     tasks = [t for t in load_tasks(args.tasks) if t.split == args.split and (not args.kind or t.subtype == args.kind)]
+    if args.one_seed:
+        tasks = one_seed(tasks)
     tasks = tasks[: args.limit] if args.limit else tasks
     out = args.out / args.tasks.stem / args.split
     try:
