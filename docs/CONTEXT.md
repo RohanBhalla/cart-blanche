@@ -84,6 +84,7 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 26 | Break point 0 means the agent bought the target with no attack at all; those tasks are reported separately and left out of attack success rates | Otherwise a config that already liked the target would look easy to fool |
 | Nov 26 | An invalid answer at some dose counts as "didn't buy the target" | Keeps every sweep finishable; the invalid rate is still reported by the harness |
 | Nov 26 | "Every candidate attacked" edge case: 20 random buy tasks with seed-0 fakes on all 10 candidates' pages, the gold included (`attack.params["others"]`); success still means buying the target | The plan's edge-case set; tests whether fakes everywhere throw the agent off |
+| Nov 27 | **Keep the binary-search dose sweep; report attack success at dose 8 as the main robustness number, with break points as approximate.** An every-dose check on 40 random E1 attacked tasks (3 per attack kind, 25 buy tasks, $0.19): 37 of 40 had the same break point; in 3 the attack worked only at a middle dose (2 or 4) and not at dose 8, so the search recorded "never" (of the 7 tasks that could be fooled at some dose, the search found 4) | Gemini 3.5 Flash-Lite rejects `temperature`, so one run per dose is a noisy sample: "works at 4, not at 8" is most likely chance, not a real effect (repeat runs would be needed to tell, and the cache replays identical requests). Success at a fixed dose is measured directly and stays valid; break points undercount attacks that work at some dose. Running every dose (about 2× per config) or adding dose 4 when dose 8 fails (about +40%) was not worth it under the budget plan. The report states this caveat |
 | Nov 27 | **Budget plan for the attack sweeps** (the full plan was about $220–260 of Gemini, too much for a course project): (1) **one attack set only**, built on the 40 dev buy tasks, with no separate held-out test sweep; (2) **attack only the configs the robustness questions need**: E1, E4b, E5, E6, E7, the 3 E7−x and E8 (E2, E3 and E4 answer personalization questions, which the clean runs already cover); (3) **one fake-review and one persuasion set** (`--one-seed`: 14 attacked copies per buy task, 562 tasks), except **E7**, which runs all three sets (722 tasks) to report the spread. Clean runs stay on all 328 tasks for every config | Estimated remaining spend about $25–35 (attack sweeps about $20–25, clean runs for E5–E8 about $10–15, repeat runs about $3). E1 showed identical break points across the three sets in 38 of 40 buy tasks, so one set loses little. Cost of the plan, stated in the report as limitations: the attack numbers come from the same 40 tasks the defenses are built on (no untouched exam set, so slightly optimistic); no seed spread except for E7; no attack numbers for E2, E3 and E4 (E2's half-finished dev sweep is kept as extra evidence) |
 | Nov 27 | **Richer attacks (research-based):** 18 attacked copies per buy task: fake reviews ×3 seeds, copy-paste, **sabotage** (fake 1–2★ reviews on the gold), **promote + sabotage**, **persuasion** ×3 seeds (authority, social proof, badges, comparisons in the bullets and title), and the 4 text attacks on new **surfaces**: description, **title** (shown in every search result) and **inside fake reviews** | Research: product-page injections and fluent persuasion move LLM recommendations (Kumar & Lakkaraju 2024; Pfrommer et al. 2024; StealthRank; FramingBench; Magentic Marketplace); fake LLM reviews are indistinguishable from real ones; benchmarks inject into tool outputs incl. user content (WASP, AgentDojo). The E1 rerun showed attacks still reached the agent too rarely |
 | Nov 27 | **Rating campaign that scales with the listing:** fake-review attacks also add 5★ ratings (1–2★ for sabotage) equal to 50% of the listing's count at dose 8 (6.25% at dose 1), on top of the shown fake texts | Eight fakes can't move a listing with thousands of ratings (the E1 rerun: 27,900 → 27,908 ratings, 4.6★ unchanged); real campaigns buy ratings in bulk. Offline on the 150 buy tasks: the target's shown stars rise ≥0.1 at dose 8 in 88% of tasks (0% with the old targets), ≥0.2 in 55%, and match or beat the gold's in 97% (54% without the attack); dose 1 and 2 stay small, so break points are meaningful |
@@ -224,13 +225,34 @@ First runs on the 36 non-buy dev tasks (Nov 16, one run each):
 - **35 tasks (5%) backfired:** E1 bought the target without the attack but avoided it at dose 8 (mostly persuasion and hidden instructions). These count as break point 0 and are left out of success rates.
 - Accuracy under the review-surface attacks rose (12% → 18%); 40 tasks each, so within noise.
 
+## E2 attack sweep (Nov 27)
+
+`python -m cartblanche.eval.sweep configs/e2_intent.yaml --split dev --out runs/v2`: all 722 dev attacked tasks (all 3 seeds, run before the budget plan), 1,526 dose runs, 1 invalid, $1.58 (stopped once on depleted credit and resumed). Results in `runs/v2/beauty_attacked/dev/E2/`.
+
+| Attack | E1 success @8 | E2 success @8 | E1 dose 1 / 2 / 4 / 8 | E2 dose 1 / 2 / 4 / 8 |
+|---|---|---|---|---|
+| Fake reviews (3 seeds) | 22% | **13%** | 8 / 11 / 16 / 22% | **0 / 1 / 1 / 13%** |
+| Copy-paste | 22% | 13% | 9 / 9 / 16 / 22% | 0 / 0 / 0 / 13% |
+| Promote + sabotage | 25% | 19% | 16 / 16 / 16 / 25% | 3 / 6 / 6 / 19% |
+| Persuasion (3 seeds) | 14% | **5%** | 9 / 10 / 12 / 14% | 4 / 4 / 4 / 5% |
+| Sabotage | 5 of 5 measurable | 6 of 6 measurable | | |
+| Text attacks (instruction, urgency, override, preference; any surface) | 0–9% | 0–6% | | |
+| **All attacks** | **12%** | **8%** | 6 / 7 / 9 / 12% | 2 / 3 / 4 / 8% |
+
+Exposure was the same for both (65% at dose 8). Accuracy at dose 0 → 8: E1 12% → 10%, E2 15% → 13%; under promote + sabotage both fall to 0%.
+
+- **E2 is harder to fool than E1**, mainly because it only gives way at the strongest dose: its median break point is 8 (E1: 1–2), fake reviews almost never work below dose 8 (0–1% vs E1's 8–16%), and persuasion works about a third as often. The intent parser, built for accuracy, also adds robustness; a plausible reason is that E2 decides against the explicit budget and features rather than the star rating, but the traces haven't been checked to confirm it.
+- **Both ignore blunt instructions** (title injections seen 87–88% of the time, 0% success) and **both fall for sabotage every time it can be measured** (only 5–6 tasks, since their clean accuracy is 12–15%).
+- **The 3 fake-review seeds are redundant for E2 too** (13% each), supporting the budget plan's one seed.
+- 25 tasks (3%) backfired for E2 (35 for E1): the target was bought without the attack but avoided at dose 8.
+
 ## Run plan (budget, Nov 27)
 
 | Config | Clean tasks | Attacked tasks | Status |
 |---|---|---|---|
 | E0 | 328 | – | done |
 | E1 | 328 | 722 (all 3 sets) | done |
-| E2 | 328 | 341 of 722 (kept as extra evidence) | clean done; attacks stopped when the credit ran out |
+| E2 | 328 | 722 (all 3 sets) | done |
 | E3, E3b, E3c, E3t, E4, E4q | 328 each | – | done |
 | E4b | 328 | 562 (`--one-seed`) | clean done; attacks next |
 | E5, E6 | 328 each | 562 each | not built (PR #16) |
