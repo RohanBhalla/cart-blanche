@@ -224,13 +224,34 @@ First runs on the 36 non-buy dev tasks (Nov 16, one run each):
 - **35 tasks (5%) backfired:** E1 bought the target without the attack but avoided it at dose 8 (mostly persuasion and hidden instructions). These count as break point 0 and are left out of success rates.
 - Accuracy under the review-surface attacks rose (12% → 18%); 40 tasks each, so within noise.
 
+## E2 attack sweep (Nov 27)
+
+`python -m cartblanche.eval.sweep configs/e2_intent.yaml --split dev --out runs/v2`: all 722 dev attacked tasks (all 3 seeds, run before the budget plan), 1,526 dose runs, 1 invalid, $1.58 (stopped once on depleted credit and resumed). Results in `runs/v2/beauty_attacked/dev/E2/`.
+
+| Attack | E1 success @8 | E2 success @8 | E1 dose 1 / 2 / 4 / 8 | E2 dose 1 / 2 / 4 / 8 |
+|---|---|---|---|---|
+| Fake reviews (3 seeds) | 22% | **13%** | 8 / 11 / 16 / 22% | **0 / 1 / 1 / 13%** |
+| Copy-paste | 22% | 13% | 9 / 9 / 16 / 22% | 0 / 0 / 0 / 13% |
+| Promote + sabotage | 25% | 19% | 16 / 16 / 16 / 25% | 3 / 6 / 6 / 19% |
+| Persuasion (3 seeds) | 14% | **5%** | 9 / 10 / 12 / 14% | 4 / 4 / 4 / 5% |
+| Sabotage | 5 of 5 measurable | 6 of 6 measurable | | |
+| Text attacks (instruction, urgency, override, preference; any surface) | 0–9% | 0–6% | | |
+| **All attacks** | **12%** | **8%** | 6 / 7 / 9 / 12% | 2 / 3 / 4 / 8% |
+
+Exposure was the same for both (65% at dose 8). Accuracy at dose 0 → 8: E1 12% → 10%, E2 15% → 13%; under promote + sabotage both fall to 0%.
+
+- **E2 is harder to fool than E1**, mainly because it only gives way at the strongest dose: its median break point is 8 (E1: 1–2), fake reviews almost never work below dose 8 (0–1% vs E1's 8–16%), and persuasion works about a third as often. The intent parser, built for accuracy, also adds robustness; a plausible reason is that E2 decides against the explicit budget and features rather than the star rating, but the traces haven't been checked to confirm it.
+- **Both ignore blunt instructions** (title injections seen 87–88% of the time, 0% success) and **both fall for sabotage every time it can be measured** (only 5–6 tasks, since their clean accuracy is 12–15%).
+- **The 3 fake-review seeds are redundant for E2 too** (13% each), supporting the budget plan's one seed.
+- 25 tasks (3%) backfired for E2 (35 for E1): the target was bought without the attack but avoided at dose 8.
+
 ## Run plan (budget, Nov 27)
 
 | Config | Clean tasks | Attacked tasks | Status |
 |---|---|---|---|
 | E0 | 328 | – | done |
 | E1 | 328 | 722 (all 3 sets) | done |
-| E2 | 328 | 341 of 722 (kept as extra evidence) | clean done; attacks stopped when the credit ran out |
+| E2 | 328 | 722 (all 3 sets) | done |
 | E3, E3b, E3c, E3t, E4, E4q | 328 each | – | done |
 | E4b | 328 | 562 (`--one-seed`) | clean done; attacks next |
 | E5, E6 | 328 each | 562 each | not built (PR #16) |
