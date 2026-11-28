@@ -184,3 +184,12 @@ def test_sabotage_success_means_the_gold_was_avoided():
     assert score(sab, kept, catalog, set()).attack_success is False
     assert score(sab, broken, catalog, set()).attack_success is False  # an invalid answer isn't the attack working
     assert bought_target(avoided, sab) and not bought_target(kept, sab) and not bought_target(broken, sab)
+
+
+def test_one_seed_keeps_fourteen_attacks_per_buy_task(attacked):
+    from cartblanche.eval.sweep import one_seed
+    _, tasks = attacked
+    kept = one_seed(tasks)
+    assert len(tasks) == 18 and len(kept) == 14
+    assert {t.task_id.split("-", 1)[1] for t in tasks} - {t.task_id.split("-", 1)[1] for t in kept} == {
+        "fr1", "fr2", "pe1", "pe2"}

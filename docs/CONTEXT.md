@@ -24,7 +24,8 @@ This file is the shared memory for anyone working on the repo, people and AI age
 | History reason tagging (E3t) | done; run on all 328 tasks; hand check on 50 reviews still to do | #11 |
 | E4 / E4b relationship rule vs check, override handling (`agent/relationship.py`) | done; run on all 328 tasks (Nov 19) | #12 |
 | Saved attacks: attacked copies of the 150 buy tasks (`attackgen.py`, `tasks/beauty_attacked.jsonl`): LLM-written fake reviews ×3 seeds, copy-paste variant, 4 text attacks | done | #13 |
-| Richer attacks: sabotage, promote + sabotage, persuasion, title and in-review surfaces, rating campaigns, new target rule; offline visibility check | done; E1 dev sweep done (Nov 27); E2 next | #17 |
+| Richer attacks: sabotage, promote + sabotage, persuasion, title and in-review surfaces, rating campaigns, new target rule; offline visibility check | done; E1 dev sweep done (Nov 27) | #17 |
+| Budget plan for the attack sweeps (see the plan below): E4b next, then E5–E8 as they're built | **next** | #18 |
 | Dose sweeps and break points (`eval/sweep.py`, `compare --attacks`); "every candidate attacked" edge case | done; full sweeps need the paid key | #14 |
 | Copied-phrasing check, fact extractor, labeling, verifier (E5–E7) | to do | |
 | E8 clarifying question and simulated user (`ask_shopper`, `env/simulated_user.py`); measured early as E4q | built; E8 waits for E5–E7 | |
@@ -83,6 +84,7 @@ First real runs (Nov 14, Gemini 3.5 Flash-Lite, fake store; one run each, so sma
 | Nov 26 | Break point 0 means the agent bought the target with no attack at all; those tasks are reported separately and left out of attack success rates | Otherwise a config that already liked the target would look easy to fool |
 | Nov 26 | An invalid answer at some dose counts as "didn't buy the target" | Keeps every sweep finishable; the invalid rate is still reported by the harness |
 | Nov 26 | "Every candidate attacked" edge case: 20 random buy tasks with seed-0 fakes on all 10 candidates' pages, the gold included (`attack.params["others"]`); success still means buying the target | The plan's edge-case set; tests whether fakes everywhere throw the agent off |
+| Nov 27 | **Budget plan for the attack sweeps** (the full plan was about $220–260 of Gemini, too much for a course project): (1) **one attack set only**, built on the 40 dev buy tasks, with no separate held-out test sweep; (2) **attack only the configs the robustness questions need**: E1, E4b, E5, E6, E7, the 3 E7−x and E8 (E2, E3 and E4 answer personalization questions, which the clean runs already cover); (3) **one fake-review and one persuasion set** (`--one-seed`: 14 attacked copies per buy task, 562 tasks), except **E7**, which runs all three sets (722 tasks) to report the spread. Clean runs stay on all 328 tasks for every config | Estimated remaining spend about $25–35 (attack sweeps about $20–25, clean runs for E5–E8 about $10–15, repeat runs about $3). E1 showed identical break points across the three sets in 38 of 40 buy tasks, so one set loses little. Cost of the plan, stated in the report as limitations: the attack numbers come from the same 40 tasks the defenses are built on (no untouched exam set, so slightly optimistic); no seed spread except for E7; no attack numbers for E2, E3 and E4 (E2's half-finished dev sweep is kept as extra evidence) |
 | Nov 27 | **Richer attacks (research-based):** 18 attacked copies per buy task: fake reviews ×3 seeds, copy-paste, **sabotage** (fake 1–2★ reviews on the gold), **promote + sabotage**, **persuasion** ×3 seeds (authority, social proof, badges, comparisons in the bullets and title), and the 4 text attacks on new **surfaces**: description, **title** (shown in every search result) and **inside fake reviews** | Research: product-page injections and fluent persuasion move LLM recommendations (Kumar & Lakkaraju 2024; Pfrommer et al. 2024; StealthRank; FramingBench; Magentic Marketplace); fake LLM reviews are indistinguishable from real ones; benchmarks inject into tool outputs incl. user content (WASP, AgentDojo). The E1 rerun showed attacks still reached the agent too rarely |
 | Nov 27 | **Rating campaign that scales with the listing:** fake-review attacks also add 5★ ratings (1–2★ for sabotage) equal to 50% of the listing's count at dose 8 (6.25% at dose 1), on top of the shown fake texts | Eight fakes can't move a listing with thousands of ratings (the E1 rerun: 27,900 → 27,908 ratings, 4.6★ unchanged); real campaigns buy ratings in bulk. Offline on the 150 buy tasks: the target's shown stars rise ≥0.1 at dose 8 in 88% of tasks (0% with the old targets), ≥0.2 in 55%, and match or beat the gold's in 97% (54% without the attack); dose 1 and 2 stay small, so break points are meaningful |
 | Nov 27 | **New target rule:** a wrong product that fits the request, shows in the request's top-10 keyword search, is genuinely rated no better than the gold, and beats the gold's stars once attacked (conditions dropped in turn if none qualifies), most visible first | Being fooled should hurt the shopper and the agent should actually see the target: 86% of targets are genuinely rated no better than the gold, and all are in the request's top-10 search results |
@@ -221,6 +223,22 @@ First runs on the 36 non-buy dev tasks (Nov 16, one run each):
 - **For E1 the 3 fake-review seeds are nearly redundant:** identical break points in 38 of 40 buy tasks, because E1 opened the target's reviews in only 15 of 40; it reacts to the rating and count (the same across seeds), not to the text. Seed variance should matter more for configs that read reviews (E5's extractor, E7's verifier).
 - **35 tasks (5%) backfired:** E1 bought the target without the attack but avoided it at dose 8 (mostly persuasion and hidden instructions). These count as break point 0 and are left out of success rates.
 - Accuracy under the review-surface attacks rose (12% → 18%); 40 tasks each, so within noise.
+
+## Run plan (budget, Nov 27)
+
+| Config | Clean tasks | Attacked tasks | Status |
+|---|---|---|---|
+| E0 | 328 | – | done |
+| E1 | 328 | 722 (all 3 sets) | done |
+| E2 | 328 | 341 of 722 (kept as extra evidence) | clean done; attacks stopped when the credit ran out |
+| E3, E3b, E3c, E3t, E4, E4q | 328 each | – | done |
+| E4b | 328 | 562 (`--one-seed`) | clean done; attacks next |
+| E5, E6 | 328 each | 562 each | not built (PR #16) |
+| E7 | 328 | 722 (all 3 sets) | not built |
+| E7−x ×3 | 328 each | 562 each | not built |
+| E8 | 328 | 562 | not built |
+
+Attack sweeps: `python -m cartblanche.eval.sweep configs/<config>.yaml --split dev --one-seed --out runs/v2` (drop `--one-seed` for E7). One config at a time: check and analyze before the next.
 
 ## Open questions
 
